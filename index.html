@@ -833,102 +833,107 @@ const GS = {
     if (this.sheetId) {
       try {
         await this.api('GET', `/v4/spreadsheets/${this.sheetId}?fields=spreadsheetId`);
-        return this.sheetId;
       } catch(e) { this.sheetId = null; localStorage.removeItem('fapp_sheet_id'); }
     }
-    const search = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name='${this.SHEET_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false&fields=files(id,name)`,
-      { headers: { 'Authorization': 'Bearer ' + this.token } }
-    ).then(r => r.json());
+    
+    if (!this.sheetId) {
+      const search = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=name='${this.SHEET_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false&fields=files(id,name)`,
+        { headers: { 'Authorization': 'Bearer ' + this.token } }
+      ).then(r => r.json());
 
-    if (search.files && search.files.length > 0) {
-      this.sheetId = search.files[0].id;
-    } else {
-      const created = await this.api('POST', '/v4/spreadsheets', {
-        properties: { title: this.SHEET_NAME },
-        sheets: [
-          { properties: { title: 'Movimientos', sheetId: 0 } },
-          { properties: { title: 'Bancos', sheetId: 1 } },
-          { properties: { title: 'Resumen', sheetId: 2 } },
-          { properties: { title: 'Prestamos', sheetId: 3 } }
-        ]
-      });
-      this.sheetId = created.spreadsheetId;
-      await this.initHeaders();
+      if (search.files && search.files.length > 0) {
+        this.sheetId = search.files[0].id;
+      } else {
+        const created = await this.api('POST', '/v4/spreadsheets', {
+          properties: { title: this.SHEET_NAME },
+          sheets: [
+            { properties: { title: 'Movimientos' } },
+            { properties: { title: 'Bancos' } },
+            { properties: { title: 'Resumen' } },
+            { properties: { title: 'Prestamos' } }
+          ]
+        });
+        this.sheetId = created.spreadsheetId;
+        await this.initHeaders();
+        localStorage.setItem('fapp_sheet_id', this.sheetId);
+        return this.sheetId;
+      }
     }
+
+    // VERIFICACIÓN Y CREACIÓN DE PESTAÑAS FALTANTES (Evita Error 400 en archivos antiguos)
+    const meta = await this.api('GET', `/v4/spreadsheets/${this.sheetId}?fields=sheets.properties.title`);
+    const existingTitles = meta.sheets.map(s => s.properties.title);
+    const requiredSheets = ['Movimientos', 'Bancos', 'Resumen', 'Prestamos'];
+    const missing = requiredSheets.filter(t => !existingTitles.includes(t));
+
+    if (missing.length > 0) {
+      await this.api('POST', `/v4/spreadsheets/${this.sheetId}:batchUpdate`, {
+        requests: missing.map(title => ({ addSheet: { properties: { title } } }))
+      });
+      await this.initHeaders(); // Vuelve a escribir cabeceras en caso de pestañas nuevas
+    }
+
     localStorage.setItem('fapp_sheet_id', this.sheetId);
     return this.sheetId;
   },
 
   async initHeaders() {
-    await this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Movimientos!A1:G1?valueInputOption=USER_ENTERED`, {
-      values: [['ID','Fecha','Descripción','Tipo','Monto','Banco','Categoría']]
-    });
-    await this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Bancos!A1:D1?valueInputOption=USER_ENTERED`, {
-      values: [['ID','Nombre','Número de cuenta','Color']]
-    });
-    await this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Resumen!A1:B1?valueInputOption=USER_ENTERED`, {
-      values: [['Concepto','Valor']]
-    });
-    await this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Prestamos!A1:K1?valueInputOption=USER_ENTERED`, {
-      values: [['ID','Deudor','Monto','Cuotas','Fecha Inicio','Frec. Días','Tipo Interés','Tasa','Interés Total','Descripción','Datos_JSON']]
-    });
-    await this.api('POST', `/v4/spreadsheets/${this.sheetId}:batchUpdate`, {
-      requests: [0,1,2,3].flatMap(sid => ([{
-        repeatCell: {
-          range: { sheetId: sid, startRowIndex: 0, endRowIndex: 1 },
-          cell: { userEnteredFormat: { backgroundColor: { red:.22, green:.36, blue:.98 }, textFormat: { bold:true, foregroundColor:{ red:1, green:1, blue:1 } } } },
-          fields: 'userEnteredFormat(backgroundColor,textFormat)'
-        }
-      }]))
-    });
+    await Promise.all([
+      this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Movimientos!A1:G1?valueInputOption=USER_ENTERED`, { values: [['ID','Fecha','Descripción','Tipo','Monto','Banco','Categoría']] }),
+      this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Bancos!A1:D1?valueInputOption=USER_ENTERED`, { values: [['ID','Nombre','Número de cuenta','Color']] }),
+      this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Resumen!A1:B1?valueInputOption=USER_ENTERED`, { values: [['Concepto','Valor']] }),
+      this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Prestamos!A1:L1?valueInputOption=USER_ENTERED`, { values: [['ID','Deudor','Monto','Cuotas','Fecha Inicio','Frec. Días','Tipo Interés','Tasa','Interés Total','Descripción','Pagado','Datos_JSON']] })
+    ]).catch(e => console.warn('No se pudieron crear cabeceras', e));
   },
 
   async clearSheet(sheetName) {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.sheetId}/values/${encodeURIComponent(sheetName)}!A1:Z10000:clear`;
+    // Borra de la fila 2 hacia abajo para NO ELIMINAR los encabezados
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.sheetId}/values/${encodeURIComponent(sheetName)}!A2:Z10000:clear`;
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + this.token, 'Content-Type': 'application/json' }
     });
-    if (!resp.ok) throw new Error('Clear failed: ' + resp.status);
-    return resp.json();
+    if (!resp.ok) console.warn('Error limpiando hoja:', sheetName);
   },
 
   async writeAll(state) {
     await this.findOrCreateSheet();
-    const banks = state.banks;
+    const banks = state.banks || [];
+    const movs = state.movs || [];
+    const loans = state.loans || [];
 
-    const movRows = [
-      ['ID','Fecha','Descripcion','Tipo','Monto','Banco','Categoria'],
-      ...state.movs.map(m => [
-        m.id, m.date, m.desc, m.type, m.amount,
-        (banks.find(b => b.id == m.bankId) || { name: 'Sin banco' }).name,
-        m.cat || ''
-      ])
-    ];
-    const bankRows = [
-      ['ID','Nombre','Numero de cuenta','Color'],
-      ...banks.map(b => [b.id, b.name, b.number || '', b.color])
-    ];
-    const loanRows = [
-      ['ID', 'Deudor', 'Monto', 'Cuotas', 'Fecha Inicio', 'Frec. Días', 'Tipo Interés', 'Tasa', 'Interés Total', 'Descripción', 'Datos_JSON'],
-      ...(state.loans || []).map(l => [
-        l.id, l.person, l.amount, l.installments, l.startDate, l.freqDays, l.interestType, l.rate, l.totalInterest, l.desc || '', JSON.stringify(l)
-      ])
-    ];
-    const ing = state.movs.filter(m => m.type === 'ingreso').reduce((s, m) => s + m.amount, 0);
-    const egr = state.movs.filter(m => m.type === 'egreso').reduce((s, m) => s + m.amount, 0);
+    const movRows = movs.map(m => [
+      m.id, m.date, m.desc, m.type, m.amount,
+      (banks.find(b => b.id == m.bankId) || { name: 'Sin banco' }).name,
+      m.cat || ''
+    ]);
+
+    const bankRows = banks.map(b => [b.id, b.name, b.number || '', b.color]);
+
+    // Mapeo exhaustivo de préstamos para el guardado en Google Sheets
+    const loanRows = loans.map(l => {
+      const cobrado = (l.schedule || []).filter(s => s.paid).reduce((a, b) => a + b.cuota, 0);
+      return [
+        l.id, l.person, l.amount, l.installments, l.startDate, l.freqDays,
+        l.interestType, l.rate || 0, l.totalInterest || 0, l.desc || '',
+        cobrado, JSON.stringify(l) // El JSON completo en la columna L
+      ];
+    });
+
+    const ing = movs.filter(m => m.type === 'ingreso').reduce((s, m) => s + m.amount, 0);
+    const egr = movs.filter(m => m.type === 'egreso').reduce((s, m) => s + m.amount, 0);
     const resumeRows = [
-      ['Concepto', 'Valor'],
       ['Total Ingresos',        ing],
       ['Total Egresos',         egr],
       ['Balance Neto',          ing - egr],
       ['Ultima sincronizacion', new Date().toLocaleString('es-PE')],
-      ['Total movimientos',     state.movs.length],
+      ['Total movimientos',     movs.length],
       ['Total bancos',          banks.length],
-      ['Total prestamos',       (state.loans || []).length]
+      ['Total prestamos',       loans.length]
     ];
 
+    // Limpia todo antes de escribir (dejando las cabeceras intactas)
     await Promise.all([
       this.clearSheet('Movimientos'),
       this.clearSheet('Bancos'),
@@ -936,20 +941,14 @@ const GS = {
       this.clearSheet('Prestamos')
     ]);
 
-    await Promise.all([
-      this.api('PUT',
-        `/v4/spreadsheets/${this.sheetId}/values/Movimientos!A1:G${movRows.length}?valueInputOption=USER_ENTERED`,
-        { values: movRows }),
-      this.api('PUT',
-        `/v4/spreadsheets/${this.sheetId}/values/Bancos!A1:D${bankRows.length}?valueInputOption=USER_ENTERED`,
-        { values: bankRows }),
-      this.api('PUT',
-        `/v4/spreadsheets/${this.sheetId}/values/Resumen!A1:B${resumeRows.length}?valueInputOption=USER_ENTERED`,
-        { values: resumeRows }),
-      this.api('PUT',
-        `/v4/spreadsheets/${this.sheetId}/values/Prestamos!A1:K${loanRows.length}?valueInputOption=USER_ENTERED`,
-        { values: loanRows })
-    ]);
+    // Inserta datos en las 4 pestañas simultáneamente
+    const updates = [];
+    if (movRows.length) updates.push(this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Movimientos!A2:G${movRows.length+1}?valueInputOption=USER_ENTERED`, { values: movRows }));
+    if (bankRows.length) updates.push(this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Bancos!A2:D${bankRows.length+1}?valueInputOption=USER_ENTERED`, { values: bankRows }));
+    if (resumeRows.length) updates.push(this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Resumen!A2:B${resumeRows.length+1}?valueInputOption=USER_ENTERED`, { values: resumeRows }));
+    if (loanRows.length) updates.push(this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Prestamos!A2:L${loanRows.length+1}?valueInputOption=USER_ENTERED`, { values: loanRows }));
+
+    await Promise.all(updates);
   },
 
   async readAll() {
@@ -957,20 +956,25 @@ const GS = {
     const [movResp, bankResp, loanResp] = await Promise.all([
       this.api('GET', `/v4/spreadsheets/${this.sheetId}/values/Movimientos!A2:G1000`),
       this.api('GET', `/v4/spreadsheets/${this.sheetId}/values/Bancos!A2:D1000`),
-      this.api('GET', `/v4/spreadsheets/${this.sheetId}/values/Prestamos!A2:K1000`).catch(() => ({values: []}))
+      this.api('GET', `/v4/spreadsheets/${this.sheetId}/values/Prestamos!A2:L1000`).catch(() => ({values: []})) // Evita fallo si falla la lectura
     ]);
-    const banks = (bankResp.values||[]).filter(r=>r[0]).map(r => ({
+
+    const banks = (bankResp?.values||[]).filter(r=>r[0]).map(r => ({
       id: parseInt(r[0]), name: r[1]||'', number: r[2]||'', color: r[3]||'#5b8cfa'
     }));
-    const movs = (movResp.values||[]).filter(r=>r[0]).map(r => {
+
+    const movs = (movResp?.values||[]).filter(r=>r[0]).map(r => {
       const bankName = r[5]||'';
       const bank = banks.find(b=>b.name===bankName) || banks[0];
       return { id: parseInt(r[0]), date: r[1]||'', desc: r[2]||'', type: r[3]||'ingreso',
                amount: parseFloat(r[4])||0, bankId: bank?.id||1, cat: r[6]||'' };
     });
-    const loans = (loanResp.values||[]).filter(r=>r[10]).map(r => {
-      try { return JSON.parse(r[10]); } catch(e) { return null; }
+
+    // Lee los préstamos desde la columna L (donde está el JSON estructurado)
+    const loans = (loanResp?.values||[]).filter(r=>r[11]).map(r => {
+      try { return JSON.parse(r[11]); } catch(e) { return null; }
     }).filter(Boolean);
+
     return { banks, movs, loans };
   },
 
@@ -1029,6 +1033,7 @@ function enterApp(){
   document.getElementById('setup-screen').classList.remove('show');
   document.getElementById('main-app').style.display='flex';
   updateBadges();renderDashboard();
+  // Auto-connect Google Sheets if configured
   const cfg=getSecCfg();
   if(cfg?.clientId){
     const ok=GS.init(cfg.clientId);
@@ -1067,6 +1072,7 @@ async function setupStep1(){
   const qrDiv=document.getElementById('qr-container');
   qrDiv.innerHTML='';
   try {
+    // QR generado localmente — sin dependencias externas
     qrDiv.innerHTML = qrToSVG(uri, 200);
   } catch(e) {
     qrDiv.innerHTML='<p style="color:#333;font-size:12px;padding:8px">Error al generar QR. Usa el código manual.</p>';
@@ -1082,6 +1088,7 @@ async function setupStep3(){
   if(code.length<6){showAuthErr('setup-totp-error','Ingresa los 6 dígitos.');return;}
   const ok=await TOTP.verify(_setupSecret,code);
   if(!ok){showAuthErr('setup-totp-error','Código incorrecto. Intenta de nuevo.');clearOtpInputs('setup-otp-inputs');return;}
+  // Save partial config, go to Sheets setup
   saveSecCfg({passHash:_setupHash,totpSecret:_setupSecret,clientId:null});
   showSetupStep(4);
 }
@@ -1158,10 +1165,14 @@ async function pullFromSheets(){
   updateSheetsStatus('syncing','Leyendo Google Sheets...');
   try{
     const data=await GS.readAll();
-    if(data.banks.length>0||data.movs.length>0||data.loans.length>0){
-      state.banks=data.banks;state.movs=data.movs;state.loans=data.loans||[];saveFin();
-      updateBadges();renderDashboard();
-      if (document.getElementById('page-prestamos').classList.contains('active')) renderLoansPage();
+    if(data.banks.length>0||data.movs.length>0 || (data.loans && data.loans.length>0)){
+      state.banks=data.banks;
+      state.movs=data.movs;
+      state.loans=data.loans || [];
+      saveFin();
+      updateBadges();
+      renderDashboard();
+      if(document.getElementById('page-prestamos').classList.contains('active')) renderLoansPage();
     }
     updateSheetsStatus('connected','Google Sheets: sincronizado');
     updateLastSync();
@@ -1193,6 +1204,7 @@ async function syncNow(){
   }
   updateSheetsStatus('syncing','Sincronizando...');
   try{
+    // Pull first, then push (merge strategy: Sheets wins on conflict)
     await pullFromSheets();
     await pushToSheets();
     showToast('✅ Sincronización completa con Google Sheets');
@@ -1205,6 +1217,7 @@ function updateLastSync(){
   localStorage.setItem('fapp_last_sync',new Date().toISOString());
 }
 
+// Auto-sync after every save
 async function autoSync(){
   if(GS.token){
     await pushToSheets();
@@ -1234,6 +1247,7 @@ function clearOtpInputs(cid){document.querySelectorAll(`#${cid} .otp-digit`).for
   const cfg=getSecCfg();
   if(!cfg){document.getElementById('auth-screen').style.display='none';document.getElementById('setup-screen').classList.add('show');}
   else{document.getElementById('auth-screen').style.display='flex';showAuthStep(1);}
+  // Show last sync time in footer even before login
   const ls=localStorage.getItem('fapp_last_sync');
   if(ls){const el=document.getElementById('last-sync-label');if(el)el.textContent='Último sync: '+new Date(ls).toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});}
 })();
