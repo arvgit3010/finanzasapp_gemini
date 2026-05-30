@@ -498,8 +498,15 @@ tbody tr:hover td{background:var(--bg3)}
           <div class="chart-container"><canvas id="doughnutChart"></canvas></div>
         </div>
       </div>
+<div class="card">
+  <div class="card-header"><div class="card-title">Balance por Persona</div><div class="card-sub">Ingresos vs Egresos comparativos</div></div>
+  <div class="chart-container" style="height:260px"><canvas id="personaChart"></canvas></div>
+</div>
+
       <div class="card">
-        <div class="card-header"><div class="card-title">Últimos movimientos</div><button class="btn btn-sm" onclick="goTo('movimientos')">Ver todos →</button></div>
+        <div class="card-header"><div class="card-title">Últimos movimientos</div>
+        <button class="btn btn-sm" onclick="goTo('movimientos')">Ver todos →</button>
+      </div>
         <div class="table-wrap" id="dash-recent"></div>
       </div>
     </div>
@@ -513,6 +520,7 @@ tbody tr:hover td{background:var(--bg3)}
         <span class="filter-label">Filtrar:</span>
         <select id="f-tipo" onchange="renderMovTable()"><option value="">Todos los tipos</option><option value="ingreso">Solo ingresos</option><option value="egreso">Solo egresos</option></select>
         <select id="f-banco" onchange="renderMovTable()"><option value="">Todos los bancos</option></select>
+        <select id="f-persona" onchange="renderMovTable()"><option value="">Todas las personas</option></select>
         <input type="month" id="f-mes" onchange="renderMovTable()">
         <button class="btn btn-sm" onclick="clearFilters()">Limpiar</button>
       </div>
@@ -566,8 +574,11 @@ tbody tr:hover td{background:var(--bg3)}
         <select id="m-cat"></select>
       </div>
       <div class="field">
-        <label>Persona <span style="font-size:10px;color:var(--text3);font-weight:normal">(Opcional)</span></label>
-        <input type="text" id="m-person" placeholder="Ej: Juan, María...">
+   <div style="display:flex; justify-content:space-between; margin-bottom:6px">
+  <label style="margin-bottom:0">Persona <span style="font-size:10px;color:var(--text3);font-weight:normal">(Opcional)</span></label>
+  <span style="font-size:11px; color:var(--blue); cursor:pointer; font-weight:600" onclick="openPersonModal()">Administrar ⚙️</span>
+</div>
+<select id="m-person"></select>
       </div>
     </div>
     <div class="modal-actions"><button class="btn" onclick="closeModal('modal-mov')">Cancelar</button><button class="btn btn-primary" onclick="saveMov()">Guardar</button></div>
@@ -583,6 +594,17 @@ tbody tr:hover td{background:var(--bg3)}
     </div>
     <div id="cat-list" style="max-height:220px; overflow-y:auto; background:var(--bg3); border-radius:var(--radius); padding:8px"></div>
     <div class="modal-actions"><button class="btn" onclick="closeModal('modal-categorias')">Cerrar</button></div>
+  </div>
+</div>
+<div class="overlay" id="modal-personas" onclick="if(event.target===this)closeModal('modal-personas')">
+  <div class="modal" style="width:400px; z-index: 1050;">
+    <div class="modal-title">Administrar Personas</div>
+    <div style="display:flex; gap:8px; margin-bottom:14px">
+      <input type="text" id="new-person-input" placeholder="Nombre de la persona..." style="flex:1; padding:8px 12px; border-radius:var(--radius); border:1px solid var(--border2); background:var(--bg3); color:var(--text);">
+      <button class="btn btn-primary" onclick="addPerson()">Agregar</button>
+    </div>
+    <div id="person-list" style="max-height:220px; overflow-y:auto; background:var(--bg3); border-radius:var(--radius); padding:8px"></div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal('modal-personas')">Cerrar</button></div>
   </div>
 </div>
 <div class="overlay" id="modal-banco" onclick="if(event.target===this)closeModal('modal-banco')">
@@ -1162,6 +1184,76 @@ function deleteCategory(idx){
   state.categories.splice(idx,1);
   saveFin(); renderCatList(); renderCatSelect(); autoSync();
 }
+// --- LÓGICA DE PERSONAS ---
+if(!state.personas || state.personas.length === 0){
+  state.personas=['Yo']; 
+  saveFin();
+}
+
+function renderPersonSelect(){
+  const opts = '<option value="">— Sin persona —</option>' + state.personas.map(p=>`<option value="${p}">${p}</option>`).join('');
+  const mPerson = document.getElementById('m-person');
+  if(mPerson) mPerson.innerHTML = opts;
+  const fPerson = document.getElementById('f-persona');
+  if(fPerson) {
+    const cur = fPerson.value;
+    fPerson.innerHTML = '<option value="">Todas las personas</option>' + state.personas.map(p=>`<option value="${p}" ${cur===p?'selected':''}>${p}</option>`).join('');
+  }
+}
+
+function openPersonModal(){ renderPersonList(); openModal('modal-personas'); }
+
+function renderPersonList(){
+  document.getElementById('person-list').innerHTML=state.personas.map((p,i)=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid var(--border2);font-size:13px">
+      <span>${p}</span>
+      <button class="btn btn-sm btn-danger" style="padding:4px 8px" onclick="deletePerson(${i})">X</button>
+    </div>`).join('');
+}
+
+function addPerson(){
+  const val=document.getElementById('new-person-input').value.trim();
+  if(!val)return;
+  if(state.personas.includes(val)){showToast('⚠️ La persona ya existe');return;}
+  state.personas.push(val);
+  document.getElementById('new-person-input').value='';
+  saveFin(); renderPersonList(); renderPersonSelect(); renderDashboard(); autoSync();
+}
+
+function deletePerson(idx){
+  state.personas.splice(idx,1);
+  saveFin(); renderPersonList(); renderPersonSelect(); renderDashboard(); renderMovTable(); autoSync();
+}
+
+function renderPersonaChart() {
+  const canvas = document.getElementById('personaChart');
+  if(!canvas) return;
+  const personasActivas = [...new Set(state.movs.map(m=>m.person).filter(Boolean))];
+  if(!personasActivas.length) return; 
+  const labels = personasActivas;
+  const ing = labels.map(p => state.movs.filter(m=>m.person===p && m.type==='ingreso').reduce((s,m)=>s+m.amount,0));
+  const egr = labels.map(p => state.movs.filter(m=>m.person===p && m.type==='egreso').reduce((s,m)=>s+m.amount,0));
+
+  if(charts.persona) charts.persona.destroy();
+  charts.persona = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {label:'Ingresos', data:ing, backgroundColor:'rgba(34,209,122,.8)', borderRadius:4},
+        {label:'Egresos', data:egr, backgroundColor:'rgba(242,92,92,.8)', borderRadius:4}
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#8b90a0', font:{size:12}}}},
+      scales: {
+        x:{grid:{color:'rgba(255,255,255,.04)'}, ticks:{color:'#8b90a0'}},
+        y:{grid:{color:'rgba(255,255,255,.04)'}, ticks:{color:'#8b90a0', callback:v=>'S/'+v.toLocaleString()}}
+      }
+    }
+  });
+}
 if(!state.banks.length){
   state.banks=[{id:1,name:'BCP',number:'001-12345678',color:'#5b8cfa'},{id:2,name:'Interbank',number:'200-87654321',color:'#22d17a'},{id:3,name:'BBVA',number:'011-99887766',color:'#f5a623'}];
   const m=n=>{const d=new Date();d.setMonth(d.getMonth()-n);return d.toISOString().slice(0,7);};
@@ -1213,7 +1305,7 @@ function renderDashboard(){
     <div class="metric-card mc-red"><div class="metric-label">Total egresos</div><div class="metric-value red">${fmt(egr)}</div><div class="metric-trend">${state.movs.filter(m=>m.type==='egreso').length} transacciones</div></div>
     <div class="metric-card mc-blue"><div class="metric-label">Balance neto</div><div class="metric-value ${bal>=0?'green':'red'}">${(bal<0?'-':'')+fmt(bal)}</div><div class="metric-trend">${bal>=0?'Saldo positivo':'Saldo negativo'}</div></div>
     <div class="metric-card mc-amber"><div class="metric-label">En bancos</div><div class="metric-value amber">${fmt(total)}</div><div class="metric-trend">${state.banks.length} cuenta(s)</div></div>`;
-  renderBarChart();renderDoughnut();
+  renderBarChart(); renderDoughnut(); renderPersonaChart();
   const rec=[...state.movs].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,8);
   document.getElementById('dash-recent').innerHTML=rec.length?buildMovTable(rec,false):`<div class="empty-state"><div class="empty-state-icon">📋</div><p>Sin movimientos</p></div>`;
 }
@@ -1244,19 +1336,62 @@ function renderMovPage(){
 function renderMovTable(){
   let movs=[...state.movs];
   const tipo=document.getElementById('f-tipo').value,bancoId=document.getElementById('f-banco').value,mes=document.getElementById('f-mes').value;
+  const persona=document.getElementById('f-persona')?.value;
   if(tipo)movs=movs.filter(m=>m.type===tipo);
   if(bancoId)movs=movs.filter(m=>m.bankId==bancoId);
   if(mes)movs=movs.filter(m=>m.date.startsWith(mes));
+  if(persona)movs=movs.filter(m=>m.person===persona);
   movs.sort((a,b)=>b.date.localeCompare(a.date));
   document.getElementById('mov-table-wrap').innerHTML=movs.length?buildMovTable(movs,true):`<div class="empty-state"><div class="empty-state-icon">🔍</div><p>Sin resultados</p><span>Ajusta los filtros o agrega movimientos</span></div>`;
 }
 
 function buildMovTable(movs,del){
-  return `<table><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Persona</th><th>Banco</th><th>Tipo</th><th style="text-align:right">Monto</th>${del?'<th></th>':''}</tr></thead><tbody>${movs.map(m=>{const b=bankById(m.bankId);return`<tr><td style="font-family:var(--mono);font-size:12px;color:var(--text2)">${m.date}</td><td style="font-weight:500">${m.desc}</td><td style="color:var(--text2);font-size:12px">${m.cat||'—'}</td><td style="color:var(--text2);font-size:12px">${m.person||'—'}</td><td><span class="bank-chip"><span class="bank-dot" style="background:${b.color}"></span>${b.name}</span></td><td><span class="badge badge-${m.type}"><span class="badge-dot"></span>${m.type}</span></td><td style="text-align:right"><span class="${m.type==='ingreso'?'amount-pos':'amount-neg'}">${m.type==='ingreso'?'+':'-'}${fmt(m.amount)}</span></td>${del?`<td><button class="btn btn-sm btn-icon" onclick="confirmDeleteMov(${m.id})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14a2,2,0,0,1-2,2H8a2,2,0,0,1-2-2L5,6"/><path d="M10,11v6M14,11v6"/></svg></button></td>`:''}</tr>`;}).join('')}</tbody></table>`;
+  return `<table>
+    <thead>
+      <tr>
+        <th>Fecha</th>
+        <th>Descripción</th>
+        <th>Categoría</th>
+        <th>Persona</th>
+        <th>Banco</th>
+        <th>Tipo</th>
+        <th style="text-align:right">Monto</th>
+        ${del?'<th style="text-align:right">Acciones</th>':''}
+      </tr>
+    </thead>
+    <tbody>
+      ${movs.map(m=>{
+        const b=bankById(m.bankId);
+        return `<tr>
+          <td style="font-family:var(--mono);font-size:12px;color:var(--text2)">${m.date}</td>
+          <td style="font-weight:500">${m.desc}</td>
+          <td style="color:var(--text2);font-size:12px">${m.cat||'—'}</td>
+          <td style="color:var(--text2);font-size:12px">${m.person||'—'}</td>
+          <td><span class="bank-chip"><span class="bank-dot" style="background:${b.color}"></span>${b.name}</span></td>
+          <td><span class="badge badge-${m.type}"><span class="badge-dot"></span>${m.type}</span></td>
+          <td style="text-align:right"><span class="${m.type==='ingreso'?'amount-pos':'amount-neg'}">${m.type==='ingreso'?'+':'-'}${fmt(m.amount)}</span></td>
+          ${del?`<td style="text-align:right">
+            <div style="display:inline-flex;gap:4px">
+              <button class="btn btn-sm btn-icon" onclick="openMovModal(${m.id})" title="Editar">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+              </button>
+              <button class="btn btn-sm btn-icon" onclick="confirmDeleteMov(${m.id})" title="Eliminar">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14a2,2,0,0,1-2,2H8a2,2,0,0,1-2-2L5,6"/><path d="M10,11v6M14,11v6"/></svg>
+              </button>
+            </div>
+          </td>`:''}
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>`;
 }
-
-function clearFilters(){document.getElementById('f-tipo').value='';document.getElementById('f-banco').value='';document.getElementById('f-mes').value='';renderMovTable();}
-
+function clearFilters(){
+  document.getElementById('f-tipo').value='';
+  document.getElementById('f-banco').value='';
+  document.getElementById('f-mes').value='';
+  if(document.getElementById('f-persona')) document.getElementById('f-persona').value='';
+  renderMovTable();
+}
 function openMovModal(id=null){
   state.editMovId=id;const m=id?state.movs.find(x=>x.id===id):null;
   document.getElementById('mov-modal-title').textContent=id?'Editar movimiento':'Nuevo movimiento';
@@ -1264,7 +1399,8 @@ function openMovModal(id=null){
   document.getElementById('m-date').value=m?.date||new Date().toISOString().slice(0,10);
   document.getElementById('m-desc').value=m?.desc||'';
   document.getElementById('m-amount').value=m?.amount||'';
-  renderCatSelect(); // Genera las opciones de categoría
+  renderCatSelect(); 
+  renderPersonSelect();
   document.getElementById('m-cat').value=m?.cat||'';
   document.getElementById('m-person').value=m?.person||'';
   document.getElementById('m-bank').innerHTML=state.banks.length?state.banks.map(b=>`<option value="${b.id}" ${m?.bankId==b.id?'selected':''}>${b.name}</option>`).join(''):'<option value="">— Agrega un banco primero —</option>';
