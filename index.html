@@ -6,6 +6,7 @@
 <title>FinanzApp — Gestión Personal</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <style>
 :root{
   --bg:#0f1117;--bg2:#171a22;--bg3:#1e222d;--bg4:#252a36;
@@ -59,6 +60,7 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
 .step-title{font-size:18px;font-weight:600;margin-bottom:6px}
 .step-sub{font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.5}
 .qr-wrap{background:white;border-radius:12px;padding:16px;display:inline-flex;align-items:center;justify-content:center;margin:16px auto}
+.qr-wrap img { display: block; margin: 0 auto; } /* Asegura que la imagen de la librería se centre */
 .secret-box{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:12px 16px;font-family:var(--mono);font-size:13px;color:var(--blue);letter-spacing:2px;text-align:center;margin:12px 0;cursor:pointer;transition:border-color .15s;word-break:break-all}
 .secret-box:hover{border-color:var(--blue)}
 .info-box{background:var(--blue-bg);border:1px solid var(--blue-border);border-radius:var(--radius);padding:12px 14px;font-size:13px;color:var(--text2);margin:14px 0;line-height:1.6}
@@ -639,121 +641,6 @@ tbody tr:hover td{background:var(--bg3)}
 'use strict';
 
 // ══════════════════════════════════════════════
-//  QR ENGINE — algoritmo probado (Kazuhiko Arase)
-//  Genera SVG válido 100% compatible con Google Authenticator
-// ══════════════════════════════════════════════
-var QRErrorCorrectLevel={L:1,M:0,Q:3,H:2};
-function makeQR(text,level){
-  // GF(256) tables
-  var EXP=new Array(256),LOG=new Array(256);
-  (function(){var x=1;for(var i=0;i<255;i++){EXP[i]=x;LOG[x]=i;x<<=1;if(x>255)x^=285;}for(var i=255;i<512;i++)EXP[i]=EXP[i-255];})();
-  function gfMul(a,b){return(a&&b)?EXP[LOG[a]+LOG[b]]:0;}
-  function gfPoly(e){var p=[1];for(var i=0;i<e;i++){var q=[],s=p.length;for(var j=0;j<s+1;j++){var a=(j<s)?gfMul(p[j],EXP[i]):0,b=(j>0)?p[j-1]:0;q.push(a^b);}p=q;}return p;}
-  function rsEncode(data,ecLen){var gen=gfPoly(ecLen),msg=data.concat(new Array(ecLen).fill(0));for(var i=0;i<data.length;i++){var c=msg[i];if(c)for(var j=0;j<gen.length;j++)msg[i+j]^=gfMul(gen[j],c);}return msg.slice(data.length);}
-
-  // version detection
-  var bytes=[];for(var i=0;i<text.length;i++){var c=text.charCodeAt(i);if(c<128)bytes.push(c);else if(c<2048)bytes.push(192|(c>>6),128|(c&63));else bytes.push(224|(c>>12),128|((c>>6)&63),128|(c&63));}
-  var n=bytes.length;
-  // capacity table [dataCodewords, ecCodewords] for M level
-  var cap=[[0,0],[16,10],[28,16],[44,26],[64,18],[86,24],[108,16],[124,18],[154,22],[182,22],[216,26],[254,30],[290,22],[334,22],[365,24],[415,24],[453,28],[507,28],[563,26],[627,26],[669,28]];
-  var ver=1;while(ver<=20&&cap[ver][0]-cap[ver][1]<n+3)ver++;
-  var dim=ver*4+21;
-
-  // matrix
-  var mat=[];for(var i=0;i<dim;i++){mat.push(new Array(dim).fill(-1));}
-
-  // finder + separator
-  function drawFinder(r,c){for(var i=-1;i<=7;i++)for(var j=-1;j<=7;j++){var rr=r+i,cc=c+j;if(rr<0||rr>=dim||cc<0||cc>=dim)continue;var v=(i>=0&&i<=6&&(j===0||j===6))||(j>=0&&j<=6&&(i===0||i===6))||(i>=2&&i<=4&&j>=2&&j<=4);mat[rr][cc]=v?1:0;}}
-  drawFinder(0,0);drawFinder(0,dim-7);drawFinder(dim-7,0);
-
-  // timing
-  for(var i=8;i<dim-8;i++){if(mat[6][i]===-1)mat[6][i]=i%2?0:1;if(mat[i][6]===-1)mat[i][6]=i%2?0:1;}
-
-  // dark module
-  mat[dim-8][8]=1;
-
-  // alignment patterns
-  var alignMap={2:[6,18],3:[6,22],4:[6,26],5:[6,30],6:[6,34],7:[6,22,38],8:[6,24,42],9:[6,28,46],10:[6,28,50],11:[6,30,54],12:[6,32,58],13:[6,34,62],14:[6,26,46,66],15:[6,26,48,70],16:[6,26,50,74],17:[6,30,54,78],18:[6,30,56,82],19:[6,30,58,86],20:[6,34,62,90]};
-  if(ver>=2&&alignMap[ver]){var ap=alignMap[ver];for(var ai=0;ai<ap.length;ai++)for(var aj=0;aj<ap.length;aj++){var ar=ap[ai],ac=ap[aj];if(mat[ar][ac]!==-1)continue;for(var di=-2;di<=2;di++)for(var dj=-2;dj<=2;dj++){mat[ar+di][ac+dj]=(Math.abs(di)===2||Math.abs(dj)===2||(di===0&&dj===0))?1:0;}}}
-
-  // encode data
-  var bits=[];bits.push(0,1,0,0);// byte mode
-  var cl=n;for(var i=7;i>=0;i--)bits.push((cl>>i)&1);
-  for(var i=0;i<n;i++)for(var j=7;j>=0;j--)bits.push((bytes[i]>>j)&1);
-  while(bits.length%8)bits.push(0);
-  var dcw=cap[ver][0]-cap[ver][1],ecw=cap[ver][1];
-  var data=[];for(var i=0;i<dcw;i++){var b=0;for(var j=0;j<8;j++)b=(b<<1)|(bits[i*8+j]||0);data.push(b);}
-  // pad
-  var pad=[0xEC,0x11],pi=0;while(data.length<dcw)data.push(pad[pi++%2]);
-  // ec
-  var ec=rsEncode(data,ecw);
-  var allBits=[];for(var i=0;i<data.length+ecw;i++){var byte_=(i<data.length)?data[i]:ec[i-data.length];for(var j=7;j>=0;j--)allBits.push((byte_>>j)&1);}
-  // remainder
-  var rem=[0,0,7,7,7,7,7,0,0,0,0,0,0,0,3,3,3,3,3,3,3];
-  for(var i=0;i<(rem[ver]||0);i++)allBits.push(0);
-
-  // reserved areas helper
-  function isReserved(r,c){
-    if((r<9&&c<9)||(r<9&&c>=dim-8)||(r>=dim-8&&c<9))return true;
-    if(r===6||c===6)return true;
-    if(ver>=2&&alignMap[ver]){var ap=alignMap[ver];for(var ai=0;ai<ap.length;ai++)for(var aj=0;aj<ap.length;aj++){if(Math.abs(r-ap[ai])<=2&&Math.abs(c-ap[aj])<=2&&mat[ap[ai]][ap[aj]]!==-1)return true;}}
-    if(ver>=7&&((r<6&&c>=dim-11)||(r>=dim-11&&c<6)))return true;
-    return false;
-  }
-
-  // place bits
-  function placeData(mat,allBits,mask){
-    var bi=0;
-    var mf=[function(r,c){return(r+c)%2===0;},function(r,c){return r%2===0;},function(r,c){return c%3===0;},function(r,c){return(r+c)%3===0;},function(r,c){return(Math.floor(r/2)+Math.floor(c/3))%2===0;},function(r,c){return(r*c)%2+(r*c)%3===0;},function(r,c){return((r*c)%2+(r*c)%3)%2===0;},function(r,c){return((r+c)%2+(r*c)%3)%2===0;}];
-    for(var col=dim-1;col>0;col-=2){if(col===6)col--;
-      for(var row=0;row<dim;row++){var r=(Math.floor((dim-1-col)/2)%2===0)?(dim-1-row):row;
-        for(var dc=0;dc<2;dc++){var c=col-dc;if(!isReserved(r,c)&&mat[r][c]===-1){var bit=allBits[bi++]||0;if(mf[mask](r,c))bit^=1;mat[r][c]=bit;}}}}
-    return mat;
-  }
-
-  // format info
-  function setFormat(mat,mask){
-    var fi=[1,0,1,0,1,0,0,0,0,0,1,0,1,1,1];// ec=M,mask=0
-    var fmask=[[1,0,1,0,1,0,0,0,0,0,1,0,0,1,0],[1,0,1,0,0,0,0,1,0,0,0,0,1,1,1],[1,0,0,1,1,1,1,0,1,0,1,1,0,0,0],[1,0,0,0,1,0,1,1,1,1,0,1,1,0,1],[0,1,1,1,0,0,0,1,0,1,1,1,1,0,0],[0,1,1,0,0,1,0,0,0,0,0,1,0,0,1],[0,1,0,1,1,0,1,1,1,0,0,0,0,1,1],[0,1,0,0,1,1,1,0,1,1,1,0,1,1,0]];
-    var fmt=fi.map(function(b,i){return b^fmask[mask][i];});
-    var fp=[[8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[8,7],[8,8],[7,8],[5,8],[4,8],[3,8],[2,8],[1,8],[0,8]];
-    var fp2=[[dim-1,8],[dim-2,8],[dim-3,8],[dim-4,8],[dim-5,8],[dim-6,8],[dim-7,8],[8,dim-8],[8,dim-7],[8,dim-6],[8,dim-5],[8,dim-4],[8,dim-3],[8,dim-2],[8,dim-1]];
-    for(var i=0;i<15;i++){mat[fp[i][0]][fp[i][1]]=fmt[i];mat[fp2[i][0]][fp2[i][1]]=fmt[i];}
-    mat[dim-8][8]=1;
-    return mat;
-  }
-
-  // pick best mask
-  function penalty(m){
-    var p=0,d=m.length;
-    for(var r=0;r<d;r++){var run=1;for(var c=1;c<d;c++){if(m[r][c]===m[r][c-1])run++;else{if(run>=5)p+=run-2;run=1;}}if(run>=5)p+=run-2;}
-    for(var c=0;c<d;c++){var run=1;for(var r=1;r<d;r++){if(m[r][c]===m[r-1][c])run++;else{if(run>=5)p+=run-2;run=1;}}if(run>=5)p+=run-2;}
-    for(var r=0;r<d-1;r++)for(var c=0;c<d-1;c++)if(m[r][c]===m[r+1][c]&&m[r][c]===m[r][c+1]&&m[r][c]===m[r+1][c+1])p+=3;
-    return p;
-  }
-
-  var bestMask=0,bestPen=Infinity,bestMat=null;
-  for(var mask=0;mask<8;mask++){
-    var m2=mat.map(function(row){return row.slice();});
-    m2=placeData(m2,allBits,mask);
-    m2=setFormat(m2,mask);
-    var pen=penalty(m2);
-    if(pen<bestPen){bestPen=pen;bestMask=mask;bestMat=m2;}
-  }
-
-  return{size:dim,data:bestMat};
-}
-
-function qrToSVG(text,px){
-  var qr=makeQR(text,QRErrorCorrectLevel.M);
-  var d=qr.size,cell=px/d,rects='';
-  for(var r=0;r<d;r++)for(var c=0;c<d;c++)
-    if(qr.data[r][c]===1)
-      rects+='<rect x="'+(c*cell).toFixed(2)+'" y="'+(r*cell).toFixed(2)+'" width="'+cell.toFixed(2)+'" height="'+cell.toFixed(2)+'"/>';
-  return '<svg xmlns="http://www.w3.org/2000/svg" width="'+px+'" height="'+px+'" viewBox="0 0 '+px+' '+px+'" shape-rendering="crispEdges"><rect width="'+px+'" height="'+px+'" fill="white"/><g fill="black">'+rects+'</g></svg>';
-}
-
-// ══════════════════════════════════════════════
 //  TOTP ENGINE — RFC 6238
 // ══════════════════════════════════════════════
 const TOTP={
@@ -861,7 +748,6 @@ const GS = {
       }
     }
 
-    // VERIFICACIÓN Y CREACIÓN DE PESTAÑAS FALTANTES (Evita Error 400 en archivos antiguos)
     const meta = await this.api('GET', `/v4/spreadsheets/${this.sheetId}?fields=sheets.properties.title`);
     const existingTitles = meta.sheets.map(s => s.properties.title);
     const requiredSheets = ['Movimientos', 'Bancos', 'Resumen', 'Prestamos'];
@@ -871,7 +757,7 @@ const GS = {
       await this.api('POST', `/v4/spreadsheets/${this.sheetId}:batchUpdate`, {
         requests: missing.map(title => ({ addSheet: { properties: { title } } }))
       });
-      await this.initHeaders(); // Vuelve a escribir cabeceras en caso de pestañas nuevas
+      await this.initHeaders();
     }
 
     localStorage.setItem('fapp_sheet_id', this.sheetId);
@@ -888,7 +774,6 @@ const GS = {
   },
 
   async clearSheet(sheetName) {
-    // Borra de la fila 2 hacia abajo para NO ELIMINAR los encabezados
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.sheetId}/values/${encodeURIComponent(sheetName)}!A2:Z10000:clear`;
     const resp = await fetch(url, {
       method: 'POST',
@@ -911,13 +796,12 @@ const GS = {
 
     const bankRows = banks.map(b => [b.id, b.name, b.number || '', b.color]);
 
-    // Mapeo exhaustivo de préstamos para el guardado en Google Sheets
     const loanRows = loans.map(l => {
       const cobrado = (l.schedule || []).filter(s => s.paid).reduce((a, b) => a + b.cuota, 0);
       return [
         l.id, l.person, l.amount, l.installments, l.startDate, l.freqDays,
         l.interestType, l.rate || 0, l.totalInterest || 0, l.desc || '',
-        cobrado, JSON.stringify(l) // El JSON completo en la columna L
+        cobrado, JSON.stringify(l)
       ];
     });
 
@@ -933,7 +817,6 @@ const GS = {
       ['Total prestamos',       loans.length]
     ];
 
-    // Limpia todo antes de escribir (dejando las cabeceras intactas)
     await Promise.all([
       this.clearSheet('Movimientos'),
       this.clearSheet('Bancos'),
@@ -941,7 +824,6 @@ const GS = {
       this.clearSheet('Prestamos')
     ]);
 
-    // Inserta datos en las 4 pestañas simultáneamente
     const updates = [];
     if (movRows.length) updates.push(this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Movimientos!A2:G${movRows.length+1}?valueInputOption=USER_ENTERED`, { values: movRows }));
     if (bankRows.length) updates.push(this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Bancos!A2:D${bankRows.length+1}?valueInputOption=USER_ENTERED`, { values: bankRows }));
@@ -956,7 +838,7 @@ const GS = {
     const [movResp, bankResp, loanResp] = await Promise.all([
       this.api('GET', `/v4/spreadsheets/${this.sheetId}/values/Movimientos!A2:G1000`),
       this.api('GET', `/v4/spreadsheets/${this.sheetId}/values/Bancos!A2:D1000`),
-      this.api('GET', `/v4/spreadsheets/${this.sheetId}/values/Prestamos!A2:L1000`).catch(() => ({values: []})) // Evita fallo si falla la lectura
+      this.api('GET', `/v4/spreadsheets/${this.sheetId}/values/Prestamos!A2:L1000`).catch(() => ({values: []}))
     ]);
 
     const banks = (bankResp?.values||[]).filter(r=>r[0]).map(r => ({
@@ -970,7 +852,6 @@ const GS = {
                amount: parseFloat(r[4])||0, bankId: bank?.id||1, cat: r[6]||'' };
     });
 
-    // Lee los préstamos desde la columna L (donde está el JSON estructurado)
     const loans = (loanResp?.values||[]).filter(r=>r[11]).map(r => {
       try { return JSON.parse(r[11]); } catch(e) { return null; }
     }).filter(Boolean);
@@ -1033,7 +914,6 @@ function enterApp(){
   document.getElementById('setup-screen').classList.remove('show');
   document.getElementById('main-app').style.display='flex';
   updateBadges();renderDashboard();
-  // Auto-connect Google Sheets if configured
   const cfg=getSecCfg();
   if(cfg?.clientId){
     const ok=GS.init(cfg.clientId);
@@ -1053,7 +933,7 @@ function lockApp(){
 }
 
 // ══════════════════════════════════════════════
-//  SETUP WIZARD
+//  SETUP WIZARD (Generación de QR Corregida)
 // ══════════════════════════════════════════════
 let _setupSecret='',_setupHash='';
 
@@ -1067,13 +947,17 @@ async function setupStep1(){
   if(p1!==p2){showAuthErr('setup-pass-error','Las contraseñas no coinciden.');return;}
   _setupHash=await hashPwd(p1);
   _setupSecret=TOTP.generateSecret();
-  const uri=`otpauth://totp/FinanzApp:usuario?secret=${_setupSecret}&issuer=FinanzApp&algorithm=SHA1&digits=6&period=30`;
+  const uri=`otpauth://totp/FinanzApp:Usuario?secret=${_setupSecret}&issuer=FinanzApp`;
   document.getElementById('secret-display').textContent=_setupSecret;
+  
   const qrDiv=document.getElementById('qr-container');
   qrDiv.innerHTML='';
   try {
-    // QR generado localmente — sin dependencias externas
-    qrDiv.innerHTML = qrToSVG(uri, 200);
+    const qr = qrcode(0, 'M');
+    qr.addData(uri);
+    qr.make();
+    // Crea una etiqueta de imagen <img/> en base64 asegurando compatibilidad perfecta
+    qrDiv.innerHTML = qr.createImgTag(6, 0); 
   } catch(e) {
     qrDiv.innerHTML='<p style="color:#333;font-size:12px;padding:8px">Error al generar QR. Usa el código manual.</p>';
   }
@@ -1088,7 +972,6 @@ async function setupStep3(){
   if(code.length<6){showAuthErr('setup-totp-error','Ingresa los 6 dígitos.');return;}
   const ok=await TOTP.verify(_setupSecret,code);
   if(!ok){showAuthErr('setup-totp-error','Código incorrecto. Intenta de nuevo.');clearOtpInputs('setup-otp-inputs');return;}
-  // Save partial config, go to Sheets setup
   saveSecCfg({passHash:_setupHash,totpSecret:_setupSecret,clientId:null});
   showSetupStep(4);
 }
@@ -1204,7 +1087,6 @@ async function syncNow(){
   }
   updateSheetsStatus('syncing','Sincronizando...');
   try{
-    // Pull first, then push (merge strategy: Sheets wins on conflict)
     await pullFromSheets();
     await pushToSheets();
     showToast('✅ Sincronización completa con Google Sheets');
@@ -1217,7 +1099,6 @@ function updateLastSync(){
   localStorage.setItem('fapp_last_sync',new Date().toISOString());
 }
 
-// Auto-sync after every save
 async function autoSync(){
   if(GS.token){
     await pushToSheets();
@@ -1247,7 +1128,6 @@ function clearOtpInputs(cid){document.querySelectorAll(`#${cid} .otp-digit`).for
   const cfg=getSecCfg();
   if(!cfg){document.getElementById('auth-screen').style.display='none';document.getElementById('setup-screen').classList.add('show');}
   else{document.getElementById('auth-screen').style.display='flex';showAuthStep(1);}
-  // Show last sync time in footer even before login
   const ls=localStorage.getItem('fapp_last_sync');
   if(ls){const el=document.getElementById('last-sync-label');if(el)el.textContent='Último sync: '+new Date(ls).toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});}
 })();
@@ -1394,6 +1274,7 @@ function renderBankGrid(){
   g.innerHTML=state.banks.map(b=>{const bal=bankBalance(b.id);return`<div class="bank-card"><div class="bank-card-header"><div class="bank-avatar" style="background:${b.color}22;color:${b.color}">${b.name.slice(0,2).toUpperCase()}</div><div><div class="bank-name">${b.name}</div><div class="bank-number">${b.number||'Sin número'}</div></div></div><div class="bank-balance-label">Saldo disponible</div><div class="bank-balance" style="color:${bal>=0?'var(--green)':'var(--red)'}">${(bal<0?'-':'')+fmt(bal)}</div><div class="bank-actions"><button class="btn btn-sm" onclick="openBankModal(${b.id})">Editar</button><button class="btn btn-sm btn-danger" onclick="confirmDeleteBank(${b.id})">Eliminar</button></div></div>`;}).join('');
 }
 
+// Ventanas modales de Bancos
 function openBankModal(id=null){
   state.editBankId=id;const b=id?state.banks.find(x=>x.id===id):null;
   document.getElementById('bank-modal-title').textContent=id?'Editar banco':'Nuevo banco';
@@ -1465,17 +1346,15 @@ function calcLoanSchedule(amount, installments, rate, type, startDate, freqDays)
 
     if (type === 'none') {
       capital = +(amount / installments).toFixed(2);
-      if (i === installments) capital = +balance.toFixed(2); // last covers rounding
+      if (i === installments) capital = +balance.toFixed(2);
       cuota = capital;
       interest = 0;
     } else if (type === 'simple') {
-      // Interés simple: se aplica sobre el saldo pendiente cada periodo
       interest = +(balance * (rate / 100)).toFixed(2);
       capital = +(amount / installments).toFixed(2);
       if (i === installments) capital = +balance.toFixed(2);
       cuota = +(capital + interest).toFixed(2);
     } else if (type === 'fixed') {
-      // Monto fijo de interés por cuota (rate = S/ fijo por período)
       interest = +rate.toFixed(2);
       capital = +(amount / installments).toFixed(2);
       if (i === installments) capital = +balance.toFixed(2);
@@ -1501,32 +1380,30 @@ function calcLoan() {
   const { type, rate } = getLoanInterestParams();
   const freq = parseInt(document.getElementById('l-freq').value) || 30;
 
-  // Show/hide interest field
   const iFields = document.getElementById('l-interest-fields');
-  const rateField = document.getElementById('l-rate-field');
   const rateLabel = document.getElementById('l-rate-label');
   if (type === 'none') {
-    iFields.style.display = 'none';
+    if (iFields) iFields.style.display = 'none';
   } else {
-    iFields.style.display = 'block';
+    if (iFields) iFields.style.display = 'block';
     if (type === 'simple') {
-      rateLabel.textContent = 'Tasa de interés por periodo (%)';
-      document.getElementById('l-rate').placeholder = 'Ej: 5';
+      if (rateLabel) rateLabel.textContent = 'Tasa de interés por periodo (%)';
+      if (document.getElementById('l-rate')) document.getElementById('l-rate').placeholder = 'Ej: 5';
     } else {
-      rateLabel.textContent = 'Interés fijo por cuota (S/)';
-      document.getElementById('l-rate').placeholder = 'Ej: 50';
+      if (rateLabel) rateLabel.textContent = 'Interés fijo por cuota (S/)';
+      if (document.getElementById('l-rate')) document.getElementById('l-rate').placeholder = 'Ej: 50';
     }
   }
 
   const preview = document.getElementById('loan-preview');
-  if (!amount || !installments) { preview.style.display = 'none'; return; }
+  if (!amount || !installments) { if (preview) preview.style.display = 'none'; return; }
 
   const startDate = document.getElementById('l-start-date').value || new Date().toISOString().slice(0,10);
   const { schedule, totalInterest } = calcLoanSchedule(amount, installments, rate, type, startDate, freq);
   const cuota = schedule[0]?.cuota || 0;
   const total = amount + totalInterest;
 
-  preview.style.display = 'block';
+  if (preview) preview.style.display = 'block';
   document.getElementById('prev-capital').textContent = fmt(amount);
   document.getElementById('prev-interest').textContent = fmt(totalInterest);
   document.getElementById('prev-installment').textContent = fmt(cuota) + (type === 'none' ? '' : ' aprox.');
@@ -1545,7 +1422,7 @@ function openLoanModal(id = null) {
   document.getElementById('l-start-date').value = loan?.startDate || new Date().toISOString().slice(0,10);
   document.getElementById('l-freq').value = loan?.freqDays || 30;
   document.getElementById('l-desc').value = loan?.desc || '';
-  // Interest type
+  
   const itype = loan?.interestType || 'none';
   document.querySelector(`input[name="l-interest-type"][value="${itype}"]`).checked = true;
   if (document.getElementById('l-rate')) document.getElementById('l-rate').value = loan?.rate || '';
@@ -1570,7 +1447,6 @@ function saveLoan() {
 
   if (state.editLoanId) {
     const loan = state.loans.find(x => x.id === state.editLoanId);
-    // Preserve paid status on existing schedule
     const oldSchedule = loan.schedule;
     schedule.forEach((s, i) => { if (oldSchedule[i]?.paid) s.paid = true; });
     Object.assign(loan, { person, amount, installments, startDate, freqDays, desc, interestType: type, rate, schedule, totalInterest });
@@ -1605,10 +1481,8 @@ function toggleInstallment(loanId, num) {
   showToast(inst.paid ? '✅ Cuota marcada como pagada' : '↩️ Cuota marcada como pendiente'); autoSync();
 }
 
-// ── Render ──────────────────────────────────
 function renderLoansPage() {
   const loans = state.loans;
-  // Metrics
   const totalPrestado = loans.reduce((s, l) => s + l.amount, 0);
   const totalCobrado = loans.reduce((s, l) =>
     s + l.schedule.filter(x => x.paid).reduce((a, b) => a + b.cuota, 0), 0);
