@@ -226,6 +226,44 @@ tbody tr:hover td{background:var(--bg3)}
   .auth-card,.setup-card{padding:28px 20px}
   .sidebar{width:200px;min-width:200px}
 }
+/* Transición de la barra lateral y estado oculto */
+.sidebar {
+  transition: width 0.3s ease, min-width 0.3s ease, opacity 0.2s ease, padding 0.3s ease;
+}
+.sidebar.oculta {
+  width: 0 !important;
+  min-width: 0 !important;
+  opacity: 0;
+  border-right: none;
+  pointer-events: none;
+}
+
+/* Diseño del botón flotante */
+.btn-toggle-sidebar {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 2500;
+  background: var(--bg4);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  padding: 10px 16px;
+  border-radius: var(--radius-lg);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn-toggle-sidebar:hover {
+  background: var(--bg3);
+  border-color: var(--blue);
+  transform: translateY(-2px);
+}
 </style>
 </head>
 <body>
@@ -367,6 +405,10 @@ tbody tr:hover td{background:var(--bg3)}
 </div>
 
 <div class="app" id="main-app" style="display:none">
+    <button class="btn-toggle-sidebar" id="btn-toggle-sidebar" onclick="toggleSidebar()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+    Ocultar barra
+  </button>
   <aside class="sidebar">
     <div class="sidebar-logo">
       <div class="logo-mark">
@@ -1597,7 +1639,21 @@ function renderLoanDetail(id) {
       <tbody>${rows}</tbody>
     </table></div>`;
 }
-
+// Función para ocultar y mostrar la barra lateral
+function toggleSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  const btn = document.getElementById('btn-toggle-sidebar');
+  
+  // Agrega o quita la clase que oculta la barra
+  sidebar.classList.toggle('oculta');
+  
+  // Cambia el texto y el ícono dependiendo del estado
+  if (sidebar.classList.contains('oculta')) {
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg> Mostrar barra';
+  } else {
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg> Ocultar barra';
+  }
+}
 </script>
 </body>
 </html>
