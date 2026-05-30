@@ -1356,7 +1356,7 @@ function buildMovTable(movs,del){
         <th>Banco</th>
         <th>Tipo</th>
         <th style="text-align:right">Monto</th>
-        ${del?'<th style="text-align:right">Acciones</th>':''}
+        ${del?'<th style="text-align:right; padding-right:24px">Acciones</th>':''}
       </tr>
     </thead>
     <tbody>
@@ -1370,13 +1370,13 @@ function buildMovTable(movs,del){
           <td><span class="bank-chip"><span class="bank-dot" style="background:${b.color}"></span>${b.name}</span></td>
           <td><span class="badge badge-${m.type}"><span class="badge-dot"></span>${m.type}</span></td>
           <td style="text-align:right"><span class="${m.type==='ingreso'?'amount-pos':'amount-neg'}">${m.type==='ingreso'?'+':'-'}${fmt(m.amount)}</span></td>
-          ${del?`<td style="text-align:right">
-            <div style="display:inline-flex;gap:4px">
-              <button class="btn btn-sm btn-icon" onclick="openMovModal(${m.id})" title="Editar">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+          ${del?`<td style="text-align:right; padding-right:12px; white-space:nowrap;">
+            <div style="display:inline-flex; gap:6px; align-items:center;">
+              <button class="btn btn-sm" onclick="openMovModal(${m.id})" title="Editar" style="padding:4px 8px; background:rgba(91,140,250,0.15); border:1px solid rgba(91,140,250,0.3); font-size:14px; cursor:pointer;">
+                ✏️
               </button>
-              <button class="btn btn-sm btn-icon" onclick="confirmDeleteMov(${m.id})" title="Eliminar">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14a2,2,0,0,1-2,2H8a2,2,0,0,1-2-2L5,6"/><path d="M10,11v6M14,11v6"/></svg>
+              <button class="btn btn-sm" onclick="confirmDeleteMov(${m.id})" title="Eliminar" style="padding:4px 8px; background:rgba(242,92,92,0.15); border:1px solid rgba(242,92,92,0.3); font-size:14px; cursor:pointer;">
+                🗑️
               </button>
             </div>
           </td>`:''}
