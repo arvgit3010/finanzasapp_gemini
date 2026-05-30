@@ -557,13 +557,34 @@ tbody tr:hover td{background:var(--bg3)}
       <div class="field"><label>Monto (S/) *</label><input type="number" id="m-amount" placeholder="0.00" min="0" step="0.01"></div>
       <div class="field"><label>Banco *</label><select id="m-bank"></select></div>
     </div>
-    <div class="field"><label>Categoría</label>
-      <select id="m-cat"><option value="">— Sin categoría —</option><option>Sueldo</option><option>Freelance</option><option>Bono</option><option>Inversión</option><option>Alquiler</option><option>Alimentación</option><option>Transporte</option><option>Salud</option><option>Educación</option><option>Servicios</option><option>Entretenimiento</option><option>Ropa</option><option>Otro</option></select>
+    <div class="field-row">
+      <div class="field">
+        <div style="display:flex; justify-content:space-between; margin-bottom:6px">
+          <label style="margin-bottom:0">Categoría</label>
+          <span style="font-size:11px; color:var(--blue); cursor:pointer; font-weight:600" onclick="openCatModal()">Administrar ⚙️</span>
+        </div>
+        <select id="m-cat"></select>
+      </div>
+      <div class="field">
+        <label>Persona <span style="font-size:10px;color:var(--text3);font-weight:normal">(Opcional)</span></label>
+        <input type="text" id="m-person" placeholder="Ej: Juan, María...">
+      </div>
     </div>
     <div class="modal-actions"><button class="btn" onclick="closeModal('modal-mov')">Cancelar</button><button class="btn btn-primary" onclick="saveMov()">Guardar</button></div>
   </div>
 </div>
 
+<div class="overlay" id="modal-categorias" onclick="if(event.target===this)closeModal('modal-categorias')">
+  <div class="modal" style="width:400px; z-index: 1050;">
+    <div class="modal-title">Administrar Categorías</div>
+    <div style="display:flex; gap:8px; margin-bottom:14px">
+      <input type="text" id="new-cat-input" placeholder="Nueva categoría..." style="flex:1; padding:8px 12px; border-radius:var(--radius); border:1px solid var(--border2); background:var(--bg3); color:var(--text);">
+      <button class="btn btn-primary" onclick="addCategory()">Agregar</button>
+    </div>
+    <div id="cat-list" style="max-height:220px; overflow-y:auto; background:var(--bg3); border-radius:var(--radius); padding:8px"></div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal('modal-categorias')">Cerrar</button></div>
+  </div>
+</div>
 <div class="overlay" id="modal-banco" onclick="if(event.target===this)closeModal('modal-banco')">
   <div class="modal">
     <div class="modal-title" id="bank-modal-title">Nuevo banco</div>
@@ -699,35 +720,25 @@ async function hashPwd(p){const e=new TextEncoder().encode(p);const b=await cryp
 //  GOOGLE SHEETS API
 // ══════════════════════════════════════════════
 const GS = {
-  token: null,
-  sheetId: null,
-  clientId: null,
+  token: null, sheetId: null, clientId: null,
   SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file',
   SHEET_NAME: 'FinanzApp — Mis Finanzas',
 
   init(clientId) {
-    this.clientId = clientId;
-    this.sheetId = localStorage.getItem('fapp_sheet_id') || null;
+    this.clientId = clientId; this.sheetId = localStorage.getItem('fapp_sheet_id') || null;
     const saved = localStorage.getItem('fapp_gs_token');
-    if (saved) {
-      const t = JSON.parse(saved);
-      if (t.expires > Date.now()) { this.token = t.access_token; return true; }
-    }
+    if (saved) { const t = JSON.parse(saved); if (t.expires > Date.now()) { this.token = t.access_token; return true; } }
     return false;
   },
 
   signIn() {
     return new Promise((resolve, reject) => {
       const client = google.accounts.oauth2.initTokenClient({
-        client_id: this.clientId,
-        scope: this.SCOPES,
+        client_id: this.clientId, scope: this.SCOPES,
         callback: (resp) => {
           if (resp.error) { reject(resp.error); return; }
           this.token = resp.access_token;
-          localStorage.setItem('fapp_gs_token', JSON.stringify({
-            access_token: resp.access_token,
-            expires: Date.now() + (resp.expires_in - 60) * 1000
-          }));
+          localStorage.setItem('fapp_gs_token', JSON.stringify({ access_token: resp.access_token, expires: Date.now() + (resp.expires_in - 60) * 1000 }));
           resolve(resp.access_token);
         }
       });
@@ -737,78 +748,41 @@ const GS = {
 
   async api(method, url, body) {
     const resp = await fetch('https://sheets.googleapis.com' + url, {
-      method,
-      headers: { 'Authorization': 'Bearer ' + this.token, 'Content-Type': 'application/json' },
+      method, headers: { 'Authorization': 'Bearer ' + this.token, 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined
     });
-    if (!resp.ok) {
-      const err = await resp.json();
-      throw new Error(err.error?.message || 'API error');
-    }
+    if (!resp.ok) { const err = await resp.json(); throw new Error(err.error?.message || 'API error'); }
     return resp.status === 204 ? null : resp.json();
   },
 
-  async driveApi(method, url, body) {
-    const resp = await fetch('https://www.googleapis.com/drive/v3' + url, {
-      method,
-      headers: { 'Authorization': 'Bearer ' + this.token, 'Content-Type': 'application/json' },
-      body: body ? JSON.stringify(body) : undefined
-    });
-    if (!resp.ok) throw new Error('Drive API error');
-    return resp.json();
-  },
-
   async findOrCreateSheet() {
-    if (this.sheetId) {
-      try {
-        await this.api('GET', `/v4/spreadsheets/${this.sheetId}?fields=spreadsheetId`);
-      } catch(e) { this.sheetId = null; localStorage.removeItem('fapp_sheet_id'); }
-    }
-    
+    if (this.sheetId) { try { await this.api('GET', `/v4/spreadsheets/${this.sheetId}?fields=spreadsheetId`); } catch(e) { this.sheetId = null; localStorage.removeItem('fapp_sheet_id'); } }
     if (!this.sheetId) {
-      const search = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=name='${this.SHEET_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false&fields=files(id,name)`,
-        { headers: { 'Authorization': 'Bearer ' + this.token } }
-      ).then(r => r.json());
-
-      if (search.files && search.files.length > 0) {
-        this.sheetId = search.files[0].id;
-      } else {
+      const search = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${this.SHEET_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false&fields=files(id,name)`, { headers: { 'Authorization': 'Bearer ' + this.token } }).then(r => r.json());
+      if (search.files && search.files.length > 0) { this.sheetId = search.files[0].id; } 
+      else {
         const created = await this.api('POST', '/v4/spreadsheets', {
           properties: { title: this.SHEET_NAME },
-          sheets: [
-            { properties: { title: 'Movimientos' } },
-            { properties: { title: 'Bancos' } },
-            { properties: { title: 'Resumen' } },
-            { properties: { title: 'Prestamos' } }
-          ]
+          sheets: [{ properties: { title: 'Movimientos' } }, { properties: { title: 'Bancos' } }, { properties: { title: 'Resumen' } }, { properties: { title: 'Prestamos' } }]
         });
-        this.sheetId = created.spreadsheetId;
-        await this.initHeaders();
-        localStorage.setItem('fapp_sheet_id', this.sheetId);
-        return this.sheetId;
+        this.sheetId = created.spreadsheetId; await this.initHeaders(); localStorage.setItem('fapp_sheet_id', this.sheetId); return this.sheetId;
       }
     }
-
     const meta = await this.api('GET', `/v4/spreadsheets/${this.sheetId}?fields=sheets.properties.title`);
     const existingTitles = meta.sheets.map(s => s.properties.title);
     const requiredSheets = ['Movimientos', 'Bancos', 'Resumen', 'Prestamos'];
     const missing = requiredSheets.filter(t => !existingTitles.includes(t));
-
     if (missing.length > 0) {
-      await this.api('POST', `/v4/spreadsheets/${this.sheetId}:batchUpdate`, {
-        requests: missing.map(title => ({ addSheet: { properties: { title } } }))
-      });
+      await this.api('POST', `/v4/spreadsheets/${this.sheetId}:batchUpdate`, { requests: missing.map(title => ({ addSheet: { properties: { title } } })) });
       await this.initHeaders();
     }
-
-    localStorage.setItem('fapp_sheet_id', this.sheetId);
-    return this.sheetId;
+    localStorage.setItem('fapp_sheet_id', this.sheetId); return this.sheetId;
   },
 
   async initHeaders() {
     await Promise.all([
-      this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Movimientos!A1:G1?valueInputOption=USER_ENTERED`, { values: [['ID','Fecha','Descripción','Tipo','Monto','Banco','Categoría']] }),
+      // AQUI AÑADIMOS "Persona" (Rango A1:H1)
+      this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Movimientos!A1:H1?valueInputOption=USER_ENTERED`, { values: [['ID','Fecha','Descripción','Tipo','Monto','Banco','Categoría','Persona']] }),
       this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Bancos!A1:D1?valueInputOption=USER_ENTERED`, { values: [['ID','Nombre','Número de cuenta','Color']] }),
       this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Resumen!A1:B1?valueInputOption=USER_ENTERED`, { values: [['Concepto','Valor']] }),
       this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Prestamos!A1:L1?valueInputOption=USER_ENTERED`, { values: [['ID','Deudor','Monto','Cuotas','Fecha Inicio','Frec. Días','Tipo Interés','Tasa','Interés Total','Descripción','Pagado','Datos_JSON']] })
@@ -817,57 +791,38 @@ const GS = {
 
   async clearSheet(sheetName) {
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.sheetId}/values/${encodeURIComponent(sheetName)}!A2:Z10000:clear`;
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + this.token, 'Content-Type': 'application/json' }
-    });
+    const resp = await fetch(url, { method: 'POST', headers: { 'Authorization': 'Bearer ' + this.token, 'Content-Type': 'application/json' } });
     if (!resp.ok) console.warn('Error limpiando hoja:', sheetName);
   },
 
   async writeAll(state) {
     await this.findOrCreateSheet();
-    const banks = state.banks || [];
-    const movs = state.movs || [];
-    const loans = state.loans || [];
+    const banks = state.banks || []; const movs = state.movs || []; const loans = state.loans || [];
 
     const movRows = movs.map(m => [
       m.id, m.date, m.desc, m.type, m.amount,
       (banks.find(b => b.id == m.bankId) || { name: 'Sin banco' }).name,
-      m.cat || ''
+      m.cat || '', m.person || '' // AQUI GUARDAMOS PERSONA
     ]);
 
     const bankRows = banks.map(b => [b.id, b.name, b.number || '', b.color]);
-
     const loanRows = loans.map(l => {
       const cobrado = (l.schedule || []).filter(s => s.paid).reduce((a, b) => a + b.cuota, 0);
-      return [
-        l.id, l.person, l.amount, l.installments, l.startDate, l.freqDays,
-        l.interestType, l.rate || 0, l.totalInterest || 0, l.desc || '',
-        cobrado, JSON.stringify(l)
-      ];
+      return [ l.id, l.person, l.amount, l.installments, l.startDate, l.freqDays, l.interestType, l.rate || 0, l.totalInterest || 0, l.desc || '', cobrado, JSON.stringify(l) ];
     });
 
     const ing = movs.filter(m => m.type === 'ingreso').reduce((s, m) => s + m.amount, 0);
     const egr = movs.filter(m => m.type === 'egreso').reduce((s, m) => s + m.amount, 0);
     const resumeRows = [
-      ['Total Ingresos',        ing],
-      ['Total Egresos',         egr],
-      ['Balance Neto',          ing - egr],
+      ['Total Ingresos', ing], ['Total Egresos', egr], ['Balance Neto', ing - egr],
       ['Ultima sincronizacion', new Date().toLocaleString('es-PE')],
-      ['Total movimientos',     movs.length],
-      ['Total bancos',          banks.length],
-      ['Total prestamos',       loans.length]
+      ['Total movimientos', movs.length], ['Total bancos', banks.length], ['Total prestamos', loans.length]
     ];
 
-    await Promise.all([
-      this.clearSheet('Movimientos'),
-      this.clearSheet('Bancos'),
-      this.clearSheet('Resumen'),
-      this.clearSheet('Prestamos')
-    ]);
+    await Promise.all([ this.clearSheet('Movimientos'), this.clearSheet('Bancos'), this.clearSheet('Resumen'), this.clearSheet('Prestamos') ]);
 
     const updates = [];
-    if (movRows.length) updates.push(this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Movimientos!A2:G${movRows.length+1}?valueInputOption=USER_ENTERED`, { values: movRows }));
+    if (movRows.length) updates.push(this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Movimientos!A2:H${movRows.length+1}?valueInputOption=USER_ENTERED`, { values: movRows }));
     if (bankRows.length) updates.push(this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Bancos!A2:D${bankRows.length+1}?valueInputOption=USER_ENTERED`, { values: bankRows }));
     if (resumeRows.length) updates.push(this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Resumen!A2:B${resumeRows.length+1}?valueInputOption=USER_ENTERED`, { values: resumeRows }));
     if (loanRows.length) updates.push(this.api('PUT', `/v4/spreadsheets/${this.sheetId}/values/Prestamos!A2:L${loanRows.length+1}?valueInputOption=USER_ENTERED`, { values: loanRows }));
@@ -878,32 +833,22 @@ const GS = {
   async readAll() {
     await this.findOrCreateSheet();
     const [movResp, bankResp, loanResp] = await Promise.all([
-      this.api('GET', `/v4/spreadsheets/${this.sheetId}/values/Movimientos!A2:G1000`),
+      this.api('GET', `/v4/spreadsheets/${this.sheetId}/values/Movimientos!A2:H1000`), // LEEMOS HASTA LA COLUMNA H
       this.api('GET', `/v4/spreadsheets/${this.sheetId}/values/Bancos!A2:D1000`),
       this.api('GET', `/v4/spreadsheets/${this.sheetId}/values/Prestamos!A2:L1000`).catch(() => ({values: []}))
     ]);
 
-    const banks = (bankResp?.values||[]).filter(r=>r[0]).map(r => ({
-      id: parseInt(r[0]), name: r[1]||'', number: r[2]||'', color: r[3]||'#5b8cfa'
-    }));
-
+    const banks = (bankResp?.values||[]).filter(r=>r[0]).map(r => ({ id: parseInt(r[0]), name: r[1]||'', number: r[2]||'', color: r[3]||'#5b8cfa' }));
     const movs = (movResp?.values||[]).filter(r=>r[0]).map(r => {
-      const bankName = r[5]||'';
-      const bank = banks.find(b=>b.name===bankName) || banks[0];
-      return { id: parseInt(r[0]), date: r[1]||'', desc: r[2]||'', type: r[3]||'ingreso',
-               amount: parseFloat(r[4])||0, bankId: bank?.id||1, cat: r[6]||'' };
+      const bankName = r[5]||''; const bank = banks.find(b=>b.name===bankName) || banks[0];
+      // AQUI RECUPERAMOS PERSONA (r[7])
+      return { id: parseInt(r[0]), date: r[1]||'', desc: r[2]||'', type: r[3]||'ingreso', amount: parseFloat(r[4])||0, bankId: bank?.id||1, cat: r[6]||'', person: r[7]||'' };
     });
-
-    const loans = (loanResp?.values||[]).filter(r=>r[11]).map(r => {
-      try { return JSON.parse(r[11]); } catch(e) { return null; }
-    }).filter(Boolean);
-
+    const loans = (loanResp?.values||[]).filter(r=>r[11]).map(r => { try { return JSON.parse(r[11]); } catch(e) { return null; } }).filter(Boolean);
     return { banks, movs, loans };
   },
 
-  getSheetUrl() {
-    return this.sheetId ? `https://docs.google.com/spreadsheets/d/${this.sheetId}/edit` : null;
-  }
+  getSheetUrl() { return this.sheetId ? `https://docs.google.com/spreadsheets/d/${this.sheetId}/edit` : null; }
 };
 
 // ══════════════════════════════════════════════
@@ -1184,6 +1129,39 @@ function saveFin(){try{localStorage.setItem('fapp_data',JSON.stringify(state));}
 function loadFin(){try{const d=localStorage.getItem('fapp_data');if(d)state={...state,...JSON.parse(d)};}catch(e){}}
 
 loadFin();
+// --- NUEVO: Inicializar categorías si no existen ---
+if(!state.categories || state.categories.length === 0){
+  state.categories=['Sueldo','Freelance','Bono','Inversión','Alquiler','Alimentación','Transporte','Salud','Educación','Servicios','Entretenimiento','Ropa','Otro'];
+  saveFin();
+}
+
+// --- NUEVO: Funciones de Categorías ---
+function renderCatSelect(){
+  document.getElementById('m-cat').innerHTML='<option value="">— Sin categoría —</option>'+state.categories.map(c=>`<option value="${c}">${c}</option>`).join('');
+}
+function openCatModal(){
+  renderCatList();
+  openModal('modal-categorias');
+}
+function renderCatList(){
+  document.getElementById('cat-list').innerHTML=state.categories.map((c,i)=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid var(--border2);font-size:13px">
+      <span>${c}</span>
+      <button class="btn btn-sm btn-danger" style="padding:4px 8px" onclick="deleteCategory(${i})">X</button>
+    </div>`).join('');
+}
+function addCategory(){
+  const val=document.getElementById('new-cat-input').value.trim();
+  if(!val)return;
+  if(state.categories.includes(val)){showToast('⚠️ La categoría ya existe');return;}
+  state.categories.push(val);
+  document.getElementById('new-cat-input').value='';
+  saveFin(); renderCatList(); renderCatSelect(); autoSync();
+}
+function deleteCategory(idx){
+  state.categories.splice(idx,1);
+  saveFin(); renderCatList(); renderCatSelect(); autoSync();
+}
 if(!state.banks.length){
   state.banks=[{id:1,name:'BCP',number:'001-12345678',color:'#5b8cfa'},{id:2,name:'Interbank',number:'200-87654321',color:'#22d17a'},{id:3,name:'BBVA',number:'011-99887766',color:'#f5a623'}];
   const m=n=>{const d=new Date();d.setMonth(d.getMonth()-n);return d.toISOString().slice(0,7);};
@@ -1274,7 +1252,7 @@ function renderMovTable(){
 }
 
 function buildMovTable(movs,del){
-  return`<table><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Banco</th><th>Tipo</th><th style="text-align:right">Monto</th>${del?'<th></th>':''}</tr></thead><tbody>${movs.map(m=>{const b=bankById(m.bankId);return`<tr><td style="font-family:var(--mono);font-size:12px;color:var(--text2)">${m.date}</td><td style="font-weight:500">${m.desc}</td><td style="color:var(--text2);font-size:12px">${m.cat||'—'}</td><td><span class="bank-chip"><span class="bank-dot" style="background:${b.color}"></span>${b.name}</span></td><td><span class="badge badge-${m.type}"><span class="badge-dot"></span>${m.type}</span></td><td style="text-align:right"><span class="${m.type==='ingreso'?'amount-pos':'amount-neg'}">${m.type==='ingreso'?'+':'-'}${fmt(m.amount)}</span></td>${del?`<td><button class="btn btn-sm btn-icon" onclick="confirmDeleteMov(${m.id})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14a2,2,0,0,1-2,2H8a2,2,0,0,1-2-2L5,6"/><path d="M10,11v6M14,11v6"/></svg></button></td>`:''}</tr>`;}).join('')}</tbody></table>`;
+  return `<table><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Persona</th><th>Banco</th><th>Tipo</th><th style="text-align:right">Monto</th>${del?'<th></th>':''}</tr></thead><tbody>${movs.map(m=>{const b=bankById(m.bankId);return`<tr><td style="font-family:var(--mono);font-size:12px;color:var(--text2)">${m.date}</td><td style="font-weight:500">${m.desc}</td><td style="color:var(--text2);font-size:12px">${m.cat||'—'}</td><td style="color:var(--text2);font-size:12px">${m.person||'—'}</td><td><span class="bank-chip"><span class="bank-dot" style="background:${b.color}"></span>${b.name}</span></td><td><span class="badge badge-${m.type}"><span class="badge-dot"></span>${m.type}</span></td><td style="text-align:right"><span class="${m.type==='ingreso'?'amount-pos':'amount-neg'}">${m.type==='ingreso'?'+':'-'}${fmt(m.amount)}</span></td>${del?`<td><button class="btn btn-sm btn-icon" onclick="confirmDeleteMov(${m.id})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14a2,2,0,0,1-2,2H8a2,2,0,0,1-2-2L5,6"/><path d="M10,11v6M14,11v6"/></svg></button></td>`:''}</tr>`;}).join('')}</tbody></table>`;
 }
 
 function clearFilters(){document.getElementById('f-tipo').value='';document.getElementById('f-banco').value='';document.getElementById('f-mes').value='';renderMovTable();}
@@ -1286,7 +1264,9 @@ function openMovModal(id=null){
   document.getElementById('m-date').value=m?.date||new Date().toISOString().slice(0,10);
   document.getElementById('m-desc').value=m?.desc||'';
   document.getElementById('m-amount').value=m?.amount||'';
+  renderCatSelect(); // Genera las opciones de categoría
   document.getElementById('m-cat').value=m?.cat||'';
+  document.getElementById('m-person').value=m?.person||'';
   document.getElementById('m-bank').innerHTML=state.banks.length?state.banks.map(b=>`<option value="${b.id}" ${m?.bankId==b.id?'selected':''}>${b.name}</option>`).join(''):'<option value="">— Agrega un banco primero —</option>';
   openModal('modal-mov');
 }
@@ -1294,15 +1274,15 @@ function openMovModal(id=null){
 async function saveMov(){
   const type=document.getElementById('m-type').value,date=document.getElementById('m-date').value,
         desc=document.getElementById('m-desc').value.trim(),amount=parseFloat(document.getElementById('m-amount').value),
-        bankId=parseInt(document.getElementById('m-bank').value),cat=document.getElementById('m-cat').value;
+        bankId=parseInt(document.getElementById('m-bank').value),cat=document.getElementById('m-cat').value,
+        person=document.getElementById('m-person').value.trim();
   if(!desc||!amount||isNaN(amount)||!date||!bankId){showToast('⚠️ Completa todos los campos obligatorios');return;}
-  if(state.editMovId){Object.assign(state.movs.find(x=>x.id===state.editMovId),{type,date,desc,amount,bankId,cat});showToast('✅ Movimiento actualizado');}
-  else{state.movs.push({id:nextId(state.movs),type,date,desc,amount,bankId,cat});showToast('✅ Movimiento registrado');}
+  if(state.editMovId){Object.assign(state.movs.find(x=>x.id===state.editMovId),{type,date,desc,amount,bankId,cat,person});showToast('✅ Movimiento actualizado');}
+  else{state.movs.push({id:nextId(state.movs),type,date,desc,amount,bankId,cat,person});showToast('✅ Movimiento registrado');}
   saveFin();closeModal('modal-mov');updateBadges();
   if(document.getElementById('page-movimientos').classList.contains('active'))renderMovTable();else renderDashboard();
   autoSync();
 }
-
 function confirmDeleteMov(id){
   const m=state.movs.find(x=>x.id===id);
   document.getElementById('confirm-msg').textContent=`¿Eliminar "${m.desc}" por ${fmt(m.amount)}?`;
