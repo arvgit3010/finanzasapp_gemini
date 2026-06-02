@@ -1639,6 +1639,7 @@ function toggleInstallment(loanId, num) {
   showToast(inst.paid ? '✅ Cuota marcada como pagada' : '↩️ Cuota marcada como pendiente'); autoSync();
 }
 
+// ── CRUD préstamos modificado con sección colapsable para completados ──────────────────────────
 function renderLoansPage() {
   const loans = state.loans;
   const totalPrestado = loans.reduce((s, l) => s + l.amount, 0);
@@ -1660,7 +1661,22 @@ function renderLoansPage() {
     return;
   }
 
-  document.getElementById('loans-list').innerHTML = loans.map(loan => {
+  // Separamos los préstamos en activos y completados
+  const activeLoans = [];
+  const completedLoans = [];
+
+  loans.forEach(loan => {
+    const paidCount = loan.schedule.filter(s => s.paid).length;
+    const totalCount = loan.schedule.length;
+    if (paidCount === totalCount && totalCount > 0) {
+      completedLoans.push(loan);
+    } else {
+      activeLoans.push(loan);
+    }
+  });
+
+  // Función interna para generar la tarjeta HTML de cada préstamo
+  const buildLoanCardHtml = (loan) => {
     const paid = loan.schedule.filter(s => s.paid).length;
     const total = loan.schedule.length;
     const pct = total ? Math.round(paid / total * 100) : 0;
@@ -1670,10 +1686,10 @@ function renderLoansPage() {
     const isComplete = paid === total;
     const typeLabel = {none:'Sin interés', simple:'Interés simple', fixed:'Monto fijo'}[loan.interestType] || '';
 
-    return `<div class="card" style="margin-bottom:14px">
+    return `<div class="card" style="margin-bottom:14px; background: ${isComplete ? 'var(--bg3)' : 'var(--bg2)'}; border-color: ${isComplete ? 'var(--border)' : 'var(--border2)'}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
         <div>
-          <div style="font-size:16px;font-weight:600;margin-bottom:3px">${loan.person}</div>
+          <div style="font-size:16px;font-weight:600;margin-bottom:3px; color: ${isComplete ? 'var(--text2)' : 'var(--text)'}">${loan.person}</div>
           <div style="font-size:12px;color:var(--text3)">${loan.desc||'Sin descripción'} · ${typeLabel} · desde ${loan.startDate}</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
@@ -1703,9 +1719,36 @@ function renderLoansPage() {
         ${next ? `<div style="font-size:11px;color:var(--amber)">Próximo: ${next.dueDate}</div>` : ''}
       </div>
     </div>`;
-  }).join('');
-}
+  };
 
+  // Construimos el HTML principal
+  let htmlContent = '';
+
+  // 1. Sección de préstamos en curso
+  if (activeLoans.length > 0) {
+    htmlContent += activeLoans.map(l => buildLoanCardHtml(l)).join('');
+  } else {
+    htmlContent += `<div class="empty-state" style="padding:24px 20px;"><p>No tienes préstamos activos en curso</p></div>`;
+  }
+
+  // 2. Sección colapsable de Historial / Completados
+  if (completedLoans.length > 0) {
+    htmlContent += `
+      <details style="margin-top: 24px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 18px;">
+        <summary style="cursor: pointer; font-size: 14px; font-weight: 500; color: var(--text2); user-select: none; display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 16px;">📁</span> 
+          Ver préstamos completados y pagados (${completedLoans.length})
+          <span style="margin-left: auto; font-size: 12px; color: var(--text3);">Clic para desplegar</span>
+        </summary>
+        <div style="margin-top: 16px; padding-top: 4px;">
+          ${completedLoans.map(l => buildLoanCardHtml(l)).join('')}
+        </div>
+      </details>
+    `;
+  }
+
+  document.getElementById('loans-list').innerHTML = htmlContent;
+}
 function openLoanDetail(id) {
   document.getElementById('loan-detail-title').textContent = 'Cuotas — ' + state.loans.find(x=>x.id===id)?.person;
   renderLoanDetail(id);
