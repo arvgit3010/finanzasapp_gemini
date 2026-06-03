@@ -1283,14 +1283,13 @@ let montosOcultos = true;
 
 function toggleVisibilidad() {
   montosOcultos = !montosOcultos;
-  // Actualizamos la vista dependiendo de la pestaña en la que estemos
+  // Actualizamos la vista dependiendo de la pestaña
   if(document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
   if(document.getElementById('page-movimientos').classList.contains('active')) renderMovTable();
   if(document.getElementById('page-bancos').classList.contains('active')) renderBankGrid();
   if(document.getElementById('page-prestamos').classList.contains('active')) renderLoansPage();
 }
 
-l
 function fmt(n) {
   if (montosOcultos) return "••••••";
   return 'S/ ' + Math.abs(n).toLocaleString('es-PE', {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -1451,11 +1450,21 @@ function confirmDeleteMov(id){
 }
 
 function renderBankGrid(){
-  const g=document.getElementById('bank-grid');
-  if(!state.banks.length){g.innerHTML=`<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-icon">🏦</div><p>Sin bancos registrados</p></div>`;return;}
-  g.innerHTML=state.banks.map(b=>{const bal=bankBalance(b.id);return`<div class="bank-card"><div class="bank-card-header"><div class="bank-avatar" style="background:${b.color}22;color:${b.color}">${b.name.slice(0,2).toUpperCase()}</div><div><div class="bank-name">${b.name}</div><div class="bank-number">${b.number||'Sin número'}</div></div></div><div class="bank-balance-label">Saldo disponible</div><div class="bank-balance" style="color:${bal>=0?'var(--green)':'var(--red)'}">${(bal<0?'-':'')+fmt(bal)}</div><div class="bank-actions"><button class="btn btn-sm" onclick="openBankModal(${b.id})">Editar</button><button class="btn btn-sm btn-danger" onclick="confirmDeleteBank(${b.id})">Eliminar</button></div></div>`;}).join('');
+  const g = document.getElementById('bank-grid');
+  const btnOjo = `<div style="grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-bottom: 8px;"><button class="btn btn-sm" onclick="toggleVisibilidad()">${montosOcultos ? '👁️ Mostrar saldos' : '👁️‍🗨️ Ocultar saldos'}</button></div>`;
+  
+  if(!state.banks.length){
+    g.innerHTML = btnOjo + `<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-icon">🏦</div><p>Sin bancos registrados</p></div>`;
+    return;
+  }
+  
+  const tarjetasHTML = state.banks.map(b=>{
+    const bal=bankBalance(b.id);
+    return`<div class="bank-card"><div class="bank-card-header"><div class="bank-avatar" style="background:${b.color}22;color:${b.color}">${b.name.slice(0,2).toUpperCase()}</div><div><div class="bank-name">${b.name}</div><div class="bank-number">${b.number||'Sin número'}</div></div></div><div class="bank-balance-label">Saldo disponible</div><div class="bank-balance" style="color:${bal>=0?'var(--green)':'var(--red)'}">${(bal<0?'-':'')+fmt(bal)}</div><div class="bank-actions"><button class="btn btn-sm" onclick="openBankModal(${b.id})">Editar</button><button class="btn btn-sm btn-danger" onclick="confirmDeleteBank(${b.id})">Eliminar</button></div></div>`;
+  }).join('');
+  
+  g.innerHTML = btnOjo + tarjetasHTML;
 }
-
 // Ventanas modales de Bancos
 function openBankModal(id=null){
   state.editBankId=id;const b=id?state.banks.find(x=>x.id===id):null;
@@ -1673,6 +1682,11 @@ function renderLoansPage() {
     s + l.schedule.filter(x => !x.paid).reduce((a, b) => a + b.cuota, 0), 0);
 
   document.getElementById('loan-metrics').innerHTML = `
+    <div style="grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-bottom: 4px;">
+      <button class="btn btn-sm" onclick="toggleVisibilidad()">
+        ${montosOcultos ? '👁️ Mostrar saldos' : '👁️‍🗨️ Ocultar saldos'}
+      </button>
+    </div>
     <div class="metric-card mc-blue"><div class="metric-label">Total prestado</div><div class="metric-value blue">${fmt(totalPrestado)}</div><div class="metric-trend">${loans.length} préstamo(s)</div></div>
     <div class="metric-card mc-green"><div class="metric-label">Total cobrado</div><div class="metric-value green">${fmt(totalCobrado)}</div></div>
     <div class="metric-card mc-amber"><div class="metric-label">Por cobrar</div><div class="metric-value amber">${fmt(totalPendiente)}</div></div>
