@@ -1145,6 +1145,8 @@ function clearOtpInputs(cid){document.querySelectorAll(`#${cid} .otp-digit`).for
 //  APP DATA
 // ══════════════════════════════════════════════
 const COLORS=['#5b8cfa','#22d17a','#f25c5c','#f5a623','#a78bfa','#38bdf8','#fb7185','#34d399','#fbbf24','#60a5fa'];
+// Variable global para controlar la visibilidad de los montos (Inicia oculto por defecto)
+
 let state={banks:[],movs:[],loans:[]};let charts={bar:null,doughnut:null};
 
 function saveFin(){try{localStorage.setItem('fapp_data',JSON.stringify(state));}catch(e){}}
@@ -1277,7 +1279,24 @@ if(!state.banks.length){
   saveFin();
 }
 
-function fmt(n){return'S/ '+Math.abs(n).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2});}
+let montosOcultos = true;
+
+function toggleVisibilidad() {
+  montosOcultos = !montosOcultos;
+  // Actualizamos la vista dependiendo de la pestaña en la que estemos
+  if(document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
+  if(document.getElementById('page-movimientos').classList.contains('active')) renderMovTable();
+  if(document.getElementById('page-bancos').classList.contains('active')) renderBankGrid();
+  if(document.getElementById('page-prestamos').classList.contains('active')) renderLoansPage();
+}
+
+l
+function fmt(n) {
+  if (montosOcultos) return "••••••";
+  return 'S/ ' + Math.abs(n).toLocaleString('es-PE', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+
 function bankById(id){return state.banks.find(b=>b.id==id)||{name:'—',color:'#888',number:''};}
 function nextId(arr){return arr.length?Math.max(...arr.map(x=>x.id))+1:1;}
 function bankBalance(id){return state.movs.filter(m=>m.bankId==id).reduce((s,m)=>s+(m.type==='ingreso'?m.amount:-m.amount),0);}
@@ -1301,6 +1320,11 @@ function renderDashboard(){
   const egr=state.movs.filter(m=>m.type==='egreso').reduce((s,m)=>s+m.amount,0);
   const bal=ing-egr,total=state.banks.reduce((s,b)=>s+bankBalance(b.id),0);
   document.getElementById('dash-metrics').innerHTML=`
+    <div style="grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-bottom: 4px;">
+      <button class="btn btn-sm" onclick="toggleVisibilidad()">
+        ${montosOcultos ? '👁️ Mostrar saldos' : '👁️‍🗨️ Ocultar saldos'}
+      </button>
+    </div>
     <div class="metric-card mc-green"><div class="metric-label">Total ingresos</div><div class="metric-value green">${fmt(ing)}</div><div class="metric-trend">${state.movs.filter(m=>m.type==='ingreso').length} transacciones</div></div>
     <div class="metric-card mc-red"><div class="metric-label">Total egresos</div><div class="metric-value red">${fmt(egr)}</div><div class="metric-trend">${state.movs.filter(m=>m.type==='egreso').length} transacciones</div></div>
     <div class="metric-card mc-blue"><div class="metric-label">Balance neto</div><div class="metric-value ${bal>=0?'green':'red'}">${(bal<0?'-':'')+fmt(bal)}</div><div class="metric-trend">${bal>=0?'Saldo positivo':'Saldo negativo'}</div></div>
