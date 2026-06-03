@@ -1759,30 +1759,28 @@ function renderLoansPage() {
     </div>`;
   };
 
-  // Construimos el HTML principal
+ // Construimos el HTML principal
   let htmlContent = '';
 
-  // 1. Sección de préstamos en curso
+  // 1. Sección colapsable de préstamos en curso (Agregamos el "details open")
   if (activeLoans.length > 0) {
-    htmlContent += activeLoans.map(l => buildLoanCardHtml(l)).join('');
+    htmlContent += `
+      <details style="margin-top: 8px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 18px;">
+        <summary style="cursor: pointer; font-size: 14px; font-weight: 500; color: var(--text); user-select: none; display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 16px;">💸</span> 
+          Préstamos en curso (${activeLoans.length})
+          <span style="margin-left: auto; font-size: 12px; color: var(--text3);">Clic para ocultar/mostrar</span>
+        </summary>
+        <div style="margin-top: 16px; padding-top: 4px;">
+          ${activeLoans.map(l => buildLoanCardHtml(l)).join('')}
+        </div>
+      </details>
+    `;
   } else {
     htmlContent += `<div class="empty-state" style="padding:24px 20px;"><p>No tienes préstamos activos en curso</p></div>`;
   }
 
-  // 2. Sección colapsable de Historial / Completados
-  if (completedLoans.length > 0) {
-    htmlContent += `
-      <details style="margin-top: 24px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 18px;">
-        <summary style="cursor: pointer; font-size: 14px; font-weight: 500; color: var(--text2); user-select: none; display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 16px;">📁</span> 
-          Ver préstamos completados y pagados (${completedLoans.length})
-          <span style="margin-left: auto; font-size: 12px; color: var(--text3);">Clic para desplegar</span>
-        </summary>
-        <div style="margin-top: 16px; padding-top: 4px;">
-          ${completedLoans.map(l => buildLoanCardHtml(l)).join('')}
-        </div>
-      </details>
-    `;
+  // 2. Sección colapsable de Historial / Completados (Se mantiene igual)
   }
 
   document.getElementById('loans-list').innerHTML = htmlContent;
