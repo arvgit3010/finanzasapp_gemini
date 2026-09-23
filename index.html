@@ -442,6 +442,10 @@ tbody tr:hover td{background:var(--bg3)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
         Préstamos<span class="nav-badge" id="badge-loans">0</span>
       </div>
+      <div class="nav-item" onclick="goTo('pagos')" id="nav-pagos">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h6"/><path d="M16 16l1.5 1.5L21 14"/></svg>
+        Por pagar<span class="nav-badge" id="badge-pagos">0</span>
+      </div>
       <div class="nav-section-label" style="margin-top:8px">Datos</div>
       <div class="nav-item" onclick="syncNow()" id="nav-sync">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
@@ -550,7 +554,48 @@ tbody tr:hover td{background:var(--bg3)}
 
       <div id="loans-list"></div>
     </div>
+
+    <div class="page" id="page-pagos">
+      <div class="topbar">
+        <div><div class="page-title">Por pagar</div><div class="page-sub">Control de gastos pendientes y pagados</div></div>
+        <div class="topbar-actions">
+          <button class="btn btn-primary" onclick="openPagoModal()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nuevo pago
+          </button>
+        </div>
+      </div>
+      <div class="metrics-grid" id="pago-metrics" style="grid-template-columns:repeat(3,minmax(0,1fr))"></div>
+      <div class="filter-bar">
+        <span class="filter-label">Estado:</span>
+        <select id="f-pago-estado" onchange="renderPagosPage()">
+          <option value="">Todos</option>
+          <option value="pendiente">Pendientes</option>
+          <option value="pagado">Pagados</option>
+        </select>
+        <input type="month" id="f-pago-mes" onchange="renderPagosPage()">
+        <button class="btn btn-sm" onclick="document.getElementById('f-pago-estado').value='';document.getElementById('f-pago-mes').value='';renderPagosPage()">Limpiar</button>
+      </div>
+      <div class="card" style="padding:0"><div class="table-wrap" id="pagos-table-wrap"></div></div>
+    </div>
   </main>
+</div>
+
+<div class="overlay" id="modal-pago" onclick="if(event.target===this)closeModal('modal-pago')">
+  <div class="modal">
+    <div class="modal-title" id="pago-modal-title">Nuevo pago</div>
+    <div class="field"><label>Concepto *</label><input type="text" id="p-concepto" placeholder="Ej: Alquiler, Internet, Tarjeta..."></div>
+    <div class="field-row">
+      <div class="field"><label>Monto estimado (S/) *</label><input type="number" id="p-estimado" min="0" step="0.01" placeholder="0.00"></div>
+      <div class="field"><label>Monto real (S/)</label><input type="number" id="p-real" min="0" step="0.01" placeholder="0.00"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Fecha / vencimiento</label><input type="date" id="p-fecha"></div>
+      <div class="field"><label>Estado</label><select id="p-pagado"><option value="false">Pendiente</option><option value="true">Pagado</option></select></div>
+    </div>
+    <div class="field"><label>Nota</label><input type="text" id="p-nota" placeholder="Opcional"></div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal('modal-pago')">Cancelar</button><button class="btn btn-primary" onclick="savePago()">Guardar</button></div>
+  </div>
 </div>
 
 <div class="overlay" id="modal-mov" onclick="if(event.target===this)closeModal('modal-mov')">
@@ -1147,7 +1192,7 @@ function clearOtpInputs(cid){document.querySelectorAll(`#${cid} .otp-digit`).for
 const COLORS=['#5b8cfa','#22d17a','#f25c5c','#f5a623','#a78bfa','#38bdf8','#fb7185','#34d399','#fbbf24','#60a5fa'];
 // Variable global para controlar la visibilidad de los montos (Inicia oculto por defecto)
 
-let state={banks:[],movs:[],loans:[]};let charts={bar:null,doughnut:null};
+let state={banks:[],movs:[],loans:[],pagos:[]};let charts={bar:null,doughnut:null};
 
 function saveFin(){try{localStorage.setItem('fapp_data',JSON.stringify(state));}catch(e){}}
 function loadFin(){try{const d=localStorage.getItem('fapp_data');if(d)state={...state,...JSON.parse(d)};}catch(e){}}
@@ -1299,7 +1344,7 @@ function fmt(n) {
 function bankById(id){return state.banks.find(b=>b.id==id)||{name:'—',color:'#888',number:''};}
 function nextId(arr){return arr.length?Math.max(...arr.map(x=>x.id))+1:1;}
 function bankBalance(id){return state.movs.filter(m=>m.bankId==id).reduce((s,m)=>s+(m.type==='ingreso'?m.amount:-m.amount),0);}
-function updateBadges(){document.getElementById('badge-movs').textContent=state.movs.length;document.getElementById('badge-banks').textContent=state.banks.length;const bl=document.getElementById('badge-loans');if(bl)bl.textContent=state.loans.length;}
+function updateBadges(){document.getElementById('badge-movs').textContent=state.movs.length;document.getElementById('badge-banks').textContent=state.banks.length;const bl=document.getElementById('badge-loans');if(bl)bl.textContent=state.loans.length;const bp=document.getElementById('badge-pagos');if(bp)bp.textContent=(state.pagos||[]).filter(p=>!p.pagado).length;}
 function showToast(msg,dur=2800){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),dur);}
 
 function goTo(page){
@@ -1311,6 +1356,7 @@ function goTo(page){
   if(page==='movimientos')renderMovPage();
   if(page==='bancos')renderBankGrid();
   if(page==='prestamos')renderLoansPage();
+  if(page==='pagos')renderPagosPage();
   updateBadges();
 }
 
@@ -1497,7 +1543,7 @@ function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 
 function exportData(){
-  const blob=new Blob([JSON.stringify({banks:state.banks,movs:state.movs,loans:state.loans},null,2)],{type:'application/json'});
+  const blob=new Blob([JSON.stringify({banks:state.banks,movs:state.movs,loans:state.loans,pagos:state.pagos,categories:state.categories,personas:state.personas},null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download=`finanzapp-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();
   showToast('✅ Backup JSON descargado');
@@ -1512,12 +1558,93 @@ function importData(event){
       if(!data.banks||!data.movs)throw new Error();
       state.banks=data.banks;state.movs=data.movs;
       if(data.loans)state.loans=data.loans;
+      if(data.pagos)state.pagos=data.pagos;
+      if(data.categories)state.categories=data.categories;
+      if(data.personas)state.personas=data.personas;
       saveFin();updateBadges();renderDashboard();goTo('dashboard');
       showToast(`✅ Restaurado: ${data.banks.length} bancos, ${data.movs.length} movimientos`);
       autoSync();
     }catch{showToast('❌ Archivo de backup inválido');}
   };
   reader.readAsText(file);event.target.value='';
+}
+
+// ── CUENTAS POR PAGAR ──────────────────────
+function openPagoModal(id=null){
+  state.editPagoId=id;
+  const p=id?(state.pagos||[]).find(x=>x.id===id):null;
+  document.getElementById('pago-modal-title').textContent=id?'Editar pago':'Nuevo pago';
+  document.getElementById('p-concepto').value=p?.concepto||'';
+  document.getElementById('p-estimado').value=p?.estimado??'';
+  document.getElementById('p-real').value=p?.real??'';
+  document.getElementById('p-fecha').value=p?.fecha||new Date().toISOString().slice(0,10);
+  document.getElementById('p-pagado').value=String(!!p?.pagado);
+  document.getElementById('p-nota').value=p?.nota||'';
+  openModal('modal-pago');
+}
+
+function savePago(){
+  const concepto=document.getElementById('p-concepto').value.trim();
+  const estimado=parseFloat(document.getElementById('p-estimado').value);
+  const realRaw=document.getElementById('p-real').value;
+  const real=realRaw===''?null:parseFloat(realRaw);
+  const fecha=document.getElementById('p-fecha').value;
+  const pagado=document.getElementById('p-pagado').value==='true';
+  const nota=document.getElementById('p-nota').value.trim();
+  if(!concepto||!Number.isFinite(estimado)){showToast('⚠️ Completa concepto y monto estimado');return;}
+  state.pagos=state.pagos||[];
+  if(state.editPagoId){
+    const p=state.pagos.find(x=>x.id===state.editPagoId);
+    if(p)Object.assign(p,{concepto,estimado,real,fecha,pagado,nota});
+    showToast('✅ Pago actualizado');
+  }else{
+    state.pagos.push({id:nextId(state.pagos),concepto,estimado,real,fecha,pagado,nota,createdAt:new Date().toISOString()});
+    showToast('✅ Pago registrado');
+  }
+  saveFin();closeModal('modal-pago');renderPagosPage();updateBadges();
+}
+
+function togglePago(id){
+  const p=(state.pagos||[]).find(x=>x.id===id);if(!p)return;
+  p.pagado=!p.pagado;
+  if(p.pagado && (p.real===null||p.real===undefined))p.real=p.estimado;
+  saveFin();renderPagosPage();updateBadges();
+  showToast(p.pagado?'✅ Marcado como pagado':'↩️ Marcado como pendiente');
+}
+
+function confirmDeletePago(id){
+  const p=(state.pagos||[]).find(x=>x.id===id);if(!p)return;
+  document.getElementById('confirm-msg').textContent='¿Eliminar el pago "'+p.concepto+'"?';
+  document.getElementById('confirm-btn').onclick=()=>{
+    state.pagos=state.pagos.filter(x=>x.id!==id);
+    saveFin();closeModal('modal-confirm');renderPagosPage();updateBadges();showToast('🗑️ Pago eliminado');
+  };
+  openModal('modal-confirm');
+}
+
+function renderPagosPage(){
+  state.pagos=state.pagos||[];
+  const total=state.pagos.reduce((s,p)=>s+(Number(p.estimado)||0),0);
+  const pagado=state.pagos.filter(p=>p.pagado).reduce((s,p)=>s+(Number(p.real??p.estimado)||0),0);
+  const pendiente=state.pagos.filter(p=>!p.pagado).reduce((s,p)=>s+(Number(p.estimado)||0),0);
+  document.getElementById('pago-metrics').innerHTML=
+    '<div class="metric-card mc-blue"><div class="metric-label">Total previsto</div><div class="metric-value blue">'+fmt(total)+'</div><div class="metric-trend">'+state.pagos.length+' registro(s)</div></div>'+
+    '<div class="metric-card mc-green"><div class="metric-label">Pagado</div><div class="metric-value green">'+fmt(pagado)+'</div><div class="metric-trend">'+state.pagos.filter(p=>p.pagado).length+' pagado(s)</div></div>'+
+    '<div class="metric-card mc-amber"><div class="metric-label">Pendiente</div><div class="metric-value amber">'+fmt(pendiente)+'</div><div class="metric-trend">'+state.pagos.filter(p=>!p.pagado).length+' pendiente(s)</div></div>';
+
+  const estado=document.getElementById('f-pago-estado')?.value||'';
+  const mes=document.getElementById('f-pago-mes')?.value||'';
+  let rows=state.pagos.filter(p=>(!estado||(estado==='pagado'?p.pagado:!p.pagado))&&(!mes||(p.fecha||'').startsWith(mes)));
+  rows.sort((a,b)=>(a.pagado-b.pagado)||String(a.fecha||'9999').localeCompare(String(b.fecha||'9999')));
+
+  const wrap=document.getElementById('pagos-table-wrap');
+  if(!rows.length){wrap.innerHTML='<div class="empty-state"><div class="empty-state-icon">🧾</div><p>Sin pagos para mostrar</p><span>Agrega un pago o cambia los filtros</span></div>';return;}
+  wrap.innerHTML='<table><thead><tr><th>Concepto</th><th>Fecha</th><th style="text-align:right">Estimado</th><th style="text-align:right">Real</th><th style="text-align:right">Diferencia</th><th style="text-align:center">Estado</th><th style="text-align:right">Acciones</th></tr></thead><tbody>'+
+    rows.map(p=>{
+      const real=p.real===null||p.real===undefined?null:Number(p.real);
+      const dif=real===null?null:real-Number(p.estimado||0);
+      return '<tr style="'+(p.pagado?'opacity:.65':'')+'"><td><div style="font-weight:500">'+p.concepto+'</div>'+(p.nota?'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+p.nota+'</div>':'')+'</td><td style="font-family:var(--mono);font-size:12px">'+(p.fecha||'—')+'</td><td style="text-align:right;font-family:var(--mono)">'+fmt(p.estimado)+'</td><td style="text-align:right;font-family:var(--mono)">'+(real===null?'—':fmt(real))+'</td><td style="text-align:right;font-family:var(--mono);color:'+(dif===null?'var(--text3)':dif<=0?'var(--green)':'var(--red)')+'">'+(dif===null?'—':(dif>0?'+':'')+fmt(dif))+'</td><td style="text-align:center"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" '+(p.pagado?'checked':'')+' onchange="togglePago('+p.id+')" style="width:15px;height:15px;accent-color:var(--green);cursor:pointer"><span class="badge '+(p.pagado?'badge-ingreso':'badge-egreso')+'">'+(p.pagado?'Pagado':'Pendiente')+'</span></label></td><td style="text-align:right;white-space:nowrap"><button class="btn btn-sm" onclick="openPagoModal('+p.id+')">Editar</button> <button class="btn btn-sm btn-danger" onclick="confirmDeletePago('+p.id+')">Eliminar</button></td></tr>';
+    }).join('')+'</tbody></table>';
 }
 
 // ── Helpers de cálculo ──────────────────────
