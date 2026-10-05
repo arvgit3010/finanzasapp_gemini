@@ -1,0 +1,27 @@
+{
+  "name": "finanzapp",
+  "version": "2.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "npm run build -w @finanzapp/dominio && concurrently -k \"npm run dev -w @finanzapp/api\" \"npm run dev -w @finanzapp/web\"",
+    "build": "npm run build -w @finanzapp/dominio && npm run build -w @finanzapp/api && npm run build -w @finanzapp/web",
+    "start": "npm run start -w @finanzapp/api",
+    "test": "npm run build && node --test tests/*.test.cjs",
+    "test:e2e": "playwright test",
+    "check": "npm test && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/node": "^24.10.0",
+    "concurrently": "^9.2.1",
+    "prettier": "3.6.2",
+    "typescript": "^5.9.3"
+  }
+}
